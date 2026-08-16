@@ -1,10 +1,9 @@
-ject · TOML
 [build-system]
 requires = ["setuptools>=61.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
- 
+
 [project]
-name = "BI-Analytics-admin"
+name = "BI-analytics-admin"
 version = "0.1.0"
 description = "Python project for datascience, web, and MSSQL integration"
 authors = [{name = "bluemoondom", email = "pillerova@mojeit.eu"}]
@@ -15,17 +14,18 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
-dynamic = ["dependencies"]
- 
+
 [project.scripts]
-BI-Analytics-admin = "web.server:main"
- 
+BI-analytics-admin = "src.web.server:main"
+
+dynamic = ["dependencies"]
+
 [tool.setuptools.dynamic]
 dependencies = {file = ["requirements.txt"]}
- 
+
 [tool.setuptools.packages.find]
 where = ["src"]
- 
+
 [tool.pytest.ini_options]
 pythonpath = ["."]
 #testpaths = ["tests"]
