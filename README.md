@@ -1,4 +1,4 @@
-# Analytics Admin — Feature Overview
+# Business Intelligence Analytics Admin — Features
 
 ## Overview
 
