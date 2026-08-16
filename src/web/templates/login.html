@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block body %}
+<main class="login-page">
+  <div class="login-header">
+    <div class="login-logo">
+      <img src="/static/icons/bar.svg" alt="Analytics admin" />
+      <span>{{ title }}</span>
+    </div>
+    <div class="lang-switcher custom-select" id="lang-switcher">
+      <div class="custom-select-trigger" id="lang-switcher-trigger">
+        <img src="/static/icons/flag-en.svg" alt="" class="flag-icon" />
+        <span>English</span>
+      </div>
+      <div class="custom-select-options" id="lang-switcher-options">
+        <div class="custom-select-option" data-lang="cs">
+          <img src="/static/icons/flag-cs.svg" alt="" class="flag-icon" />
+          <span>Čeština</span>
+        </div>
+        <div class="custom-select-option" data-lang="en">
+          <img src="/static/icons/flag-en.svg" alt="" class="flag-icon" />
+          <span>English</span>
+        </div>
+        <div class="custom-select-option" data-lang="de">
+          <img src="/static/icons/flag-de.svg" alt="" class="flag-icon" />
+          <span>Deutsch</span>
+        </div>
+        <div class="custom-select-option" data-lang="fr">
+          <img src="/static/icons/flag-fr.svg" alt="" class="flag-icon" />
+          <span>Français</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="login-card">
+    <h1 id="auth-title" data-i18n="login_title">Přihlášení</h1>
+    <p id="auth-hint" data-i18n="login_hint">Zadejte email a my vám pošleme jednorázový přihlašovací odkaz.</p>
+    <form id="auth-form" class="login-form">
+      <label for="auth-email" data-i18n="login_email_label">Email</label>
+      <input type="email" id="auth-email" name="email" required />
+      <button type="submit" class="btn primary" id="auth-submit" data-i18n="login_submit_button">Odeslat odkaz</button>
+    </form>
+    <div id="auth-message" class="login-message"></div>
+    <div class="auth-toggle">
+      <button type="button" id="auth-toggle" class="btn link" data-i18n="switch_to_register">Nemáte účet? Zaregistrujte se</button>
+    </div>
+  </div>
+</main>
+<script src="/static/login.js"></script>
+{% endblock %}

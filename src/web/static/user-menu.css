@@ -1,0 +1,156 @@
+.app-logo {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.app-logo img {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+}
+
+.app-logo h1 {
+  font-size: 1.1rem;
+  margin: 0;
+}
+
+.user-section {
+  margin-top: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.user-trigger {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+  cursor: pointer;
+  font-size: 0.95rem;
+}
+
+.user-trigger:hover {
+  background: #f3f4f6;
+}
+
+.user-icon {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+.user-email {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-dropdown {
+  display: none;
+  padding: 0.5rem;
+  border: 1px solid var(--border);
+  border-top: none;
+  border-radius: 0 0 var(--radius) var(--radius);
+  background: var(--panel);
+}
+
+.user-section.open .user-dropdown {
+  display: block;
+}
+
+.logout-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.4rem 0.5rem;
+  border: none;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text);
+  font-size: 0.95rem;
+  cursor: pointer;
+  text-align: left;
+}
+
+.logout-item:hover {
+  background: #f3f4f6;
+}
+
+.logout-icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.lang-switcher {
+  position: relative;
+  width: 100%;
+  margin-top: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.lang-switcher .custom-select-trigger {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+  cursor: pointer;
+}
+
+.lang-switcher .custom-select-options {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 10;
+  display: none;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+  margin-top: 0.25rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.lang-switcher.open .custom-select-options {
+  display: flex;
+}
+
+.lang-switcher .custom-select-option {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  cursor: pointer;
+}
+
+.lang-switcher .custom-select-option:hover {
+  background: #f3f4f6;
+}
+
+.flag-icon {
+  width: 20px;
+  height: 14px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.user-menu {
+  display: none;
+}

@@ -1,0 +1,564 @@
+{% extends "base.html" %}
+{% block body %}
+<main class="layout">
+  <aside class="sidebar">
+    <div class="app-header">
+      <div class="app-logo">
+        <img src="/static/icons/bar.svg" alt="Analytics admin" />
+        <h1>{{ title }}</h1>
+      </div>
+    </div>
+
+    <div class="user-section" id="user-section">
+      <button class="user-trigger" id="user-trigger" type="button" aria-expanded="false">
+        <img src="/static/icons/user.svg" alt="" class="user-icon" />
+        <span class="user-email">{{ user.email }}</span>
+      </button>
+      <div class="user-dropdown" id="user-dropdown">
+        <button type="button" id="logout-button" class="logout-item">
+          <img src="/static/icons/logout.svg" alt="" class="logout-icon" />
+          <span data-i18n="logout_button">Odhlásit</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="lang-switcher custom-select" id="lang-switcher">
+      <div class="custom-select-trigger" id="lang-switcher-trigger">
+        <img src="/static/icons/flag-en.svg" alt="" class="flag-icon" />
+        <span>English</span>
+      </div>
+      <div class="custom-select-options" id="lang-switcher-options">
+        <div class="custom-select-option" data-lang="cs">
+          <img src="/static/icons/flag-cs.svg" alt="" class="flag-icon" />
+          <span>Čeština</span>
+        </div>
+        <div class="custom-select-option" data-lang="en">
+          <img src="/static/icons/flag-en.svg" alt="" class="flag-icon" />
+          <span>English</span>
+        </div>
+        <div class="custom-select-option" data-lang="de">
+          <img src="/static/icons/flag-de.svg" alt="" class="flag-icon" />
+          <span>Deutsch</span>
+        </div>
+        <div class="custom-select-option" data-lang="fr">
+          <img src="/static/icons/flag-fr.svg" alt="" class="flag-icon" />
+          <span>Français</span>
+        </div>
+      </div>
+    </div>
+
+    <nav class="top-menu">
+      <button id="menu-dashboards" class="btn primary active" data-i18n="menu_dashboards">Dashboardy</button>
+      <button id="menu-view-modeling" class="btn" data-i18n="menu_view_modeling">Modelování views</button>
+      <button id="menu-connectors" class="btn" data-i18n="menu_connectors">Konektory</button>
+    </nav>
+
+    <section id="dashboard-menu-section">
+      <button id="new-dashboard" class="btn primary"><img src="/static/icons/plus.svg" alt="" class="btn-icon" /> <span data-i18n="new_dashboard_button">Nový dashboard</span></button>
+      <h2 data-i18n="saved_dashboards_heading">Uložené dashboardy</h2>
+      <ul id="dashboard-list" class="dashboard-list"></ul>
+    </section>
+
+    <section id="view-menu-section" class="hidden">
+      <button id="new-view" class="btn primary"><img src="/static/icons/plus.svg" alt="" class="btn-icon" /> <span data-i18n="new_view_button">Nový view</span></button>
+      <h2 data-i18n="saved_views_heading">Uložené views</h2>
+      <ul id="view-list" class="dashboard-list"></ul>
+    </section>
+
+    <section id="connectors-menu-section" class="hidden">
+      <button id="new-connector" class="btn primary"><img src="/static/icons/plus.svg" alt="" class="btn-icon" /> <span data-i18n="new_connector_button">Nový konektor</span></button>
+      <h2 data-i18n="saved_connectors_heading">Konektory</h2>
+      <ul id="connector-list" class="dashboard-list"></ul>
+    </section>
+  </aside>
+
+  <section class="workspace" id="workspace">
+    <div id="empty-state" class="empty-state">
+      <p data-i18n="empty_state_hint">Vyberte existující dashboard nebo vytvořte nový.</p>
+    </div>
+
+    <div id="builder" class="builder hidden">
+      <header class="builder-header">
+        <input id="dashboard-name" class="title-input" data-i18n-placeholder="dashboard_name_placeholder" placeholder="Název dashboardu" />
+        <div class="actions">
+          <button id="save-dashboard" class="btn primary"><img src="/static/icons/save.svg" alt="" class="btn-icon" /> <span data-i18n="save_dashboard_button">Uložit</span></button>
+          <button id="delete-dashboard" class="btn danger hidden"><img src="/static/icons/delete.svg" alt="" class="btn-icon" /> <span data-i18n="delete_dashboard_button">Smazat</span></button>
+        </div>
+      </header>
+
+      <div class="main-stage">
+        <div class="stage-content">
+          <div class="panel source-panel">
+            <label class="source-label">
+              <span data-i18n="view_select_label">View / tabulka</span>
+              <select id="view-select">
+                <option value="" data-i18n="view_select_placeholder">-- Vyberte view --</option>
+              </select>
+            </label>
+
+            <div class="export-actions">
+              <button id="export-excel" class="btn" data-i18n="export_excel_title" data-i18n-attr="title" title="Export tabulky do Excelu"><img src="/static/icons/excel.svg" alt="" class="btn-icon" /> <span data-i18n="export_excel_button">Excel</span></button>
+              <button id="export-pdf" class="btn" data-i18n="export_pdf_title" data-i18n-attr="title" title="Export grafů do PDF"><img src="/static/icons/pdf.svg" alt="" class="btn-icon" /> <span data-i18n="export_pdf_button">PDF</span></button>
+              <button id="copy-dashboard" class="btn" data-i18n="copy_dashboard_title" data-i18n-attr="title" title="Vytvořit kopii dashboardu"><img src="/static/icons/copy.svg" alt="" class="btn-icon" /> <span data-i18n="copy_dashboard_button">Kopírovat</span></button>
+            </div>
+
+            <button id="right-panel-open" class="btn right-panel-open primary" type="button">
+              <span data-i18n="right_panel_open_button">❯ Nastavení</span>
+            </button>
+          </div>
+
+          <div id="charts-panel" class="panel hidden">
+            <h3 data-i18n="charts_heading">Grafy</h3>
+            <div id="chart-list" class="chart-list"></div>
+          </div>
+
+          <div class="panel data-panel">
+            <h3 data-i18n="data_heading">Data</h3>
+            <div class="table-wrap">
+              <table id="data-table" class="data-table">
+                <thead></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+            <p id="row-count" class="row-count"></p>
+          </div>
+        </div>
+
+        <!-- Overlay right panel -->
+        <div id="right-panel" class="right-panel collapsed">
+          <div class="right-panel-handle" id="right-panel-handle" data-i18n="right_panel_resize_handle_title" data-i18n-attr="title" title="Tažením změňte šířku"></div>
+          <div class="right-panel-inner">
+            <div class="right-panel-header">
+              <span data-i18n="right_panel_header">Nastavení dashboardu</span>
+              <button id="right-panel-close" class="btn icon" type="button">&#10005;</button>
+            </div>
+
+            <div class="rp-accordion">
+              <button class="rp-accordion-header active" type="button" data-section="fields">
+                <span data-i18n="accordion_fields">Sloupce / Dimenze / Kontingence</span>
+                <span class="rp-chevron">&#10095;</span>
+              </button>
+              <div id="rp-section-fields" class="rp-accordion-body open">
+                <div class="rp-subsection">
+                  <h4 data-i18n="columns_heading">Sloupce</h4>
+                  <p class="hint" data-i18n="columns_hint">Kliknutím na ikonu oka sloupec zobrazíte/skrýte. Táhnutím nebo tlačítky změníte pořadí v tabulce, přetažením dolů do Skrytých sloupců skryjete.</p>
+                  <div id="source-list" class="field-list"></div>
+                </div>
+                <div class="rp-subsection">
+                  <h4 data-i18n="hidden_columns_heading">Skryté sloupce</h4>
+                  <p class="hint" data-i18n="hidden_columns_hint">Přetažením nahoru do Sloupců zobrazíte. Kliknutím na oko zobrazíte.</p>
+                  <div id="hidden-list" class="field-list hidden-list"></div>
+                </div>
+                <div class="rp-subsection">
+                  <h4 data-i18n="dimensions_heading">Dimenze</h4>
+                  <p class="hint" data-i18n="dimensions_hint">Řazení určuje seskupení zleva doprava a úroveň rozpadu. První dimenze je hlavní řazení, další slouží jako vnořený rozpad.</p>
+                  <div id="dimension-list" class="field-list"></div>
+                </div>
+                <div class="rp-subsection">
+                  <h4 data-i18n="measures_heading">Kontingence</h4>
+                  <p class="hint" data-i18n="measures_hint">Číselné agregace.</p>
+                  <div id="measure-list" class="field-list"></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="rp-accordion">
+              <button class="rp-accordion-header active" type="button" data-section="filters">
+                <span data-i18n="filters_heading">Filtry</span>
+                <span class="rp-chevron">&#10095;</span>
+              </button>
+              <div id="rp-section-filters" class="rp-accordion-body open">
+                <div id="filter-bar" class="filter-bar"></div>
+              </div>
+            </div>
+
+            <div class="rp-accordion">
+              <button class="rp-accordion-header" type="button" data-section="chart">
+                <span data-i18n="add_chart_heading">Přidat graf</span>
+                <span class="rp-chevron">&#10095;</span>
+              </button>
+              <div id="rp-section-chart" class="rp-accordion-body">
+                <div class="chart-form">
+                  <input type="hidden" id="chart-type" value="bar" />
+                  <div class="form-row">
+                    <label class="full-width"><span data-i18n="chart_title_label">Název grafu</span>
+                      <input id="chart-title" type="text" data-i18n-placeholder="chart_title_placeholder" placeholder="např. Obrat za měsíc" />
+                    </label>
+                  </div>
+
+                  <div class="form-row">
+                    <label class="full-width chart-type-label"><span data-i18n="chart_type_label">Typ grafu</span>
+                      <div id="chart-type-select" class="custom-select" tabindex="0">
+                        <div class="custom-select-trigger" id="chart-type-trigger">
+                          <img src="/static/icons/bar.svg" alt="" class="chart-icon" />
+                          <span id="chart-type-trigger-label">Bar</span>
+                        </div>
+                        <div class="custom-select-options" id="chart-type-options"></div>
+                      </div>
+                    </label>
+                  </div>
+
+                  <div class="form-row">
+                    <label><span data-i18n="chart_x_label">Osa X</span>
+                      <select id="chart-x"></select>
+                    </label>
+                    <label><span data-i18n="chart_split_label">Rozdělit podle</span>
+                      <select id="chart-split">
+                        <option value="" data-i18n="chart_split_none">-- nic --</option>
+                      </select>
+                    </label>
+                  </div>
+
+                  <div class="form-row">
+                    <label><span data-i18n="chart_x_axis_label">Popisek osy X</span>
+                      <input id="chart-x-label" type="text" data-i18n-placeholder="chart_x_axis_placeholder" placeholder="např. Měsíc" />
+                    </label>
+                    <label><span data-i18n="chart_y_axis_label">Popisek osy Y</span>
+                      <input id="chart-y-label" type="text" data-i18n-placeholder="chart_y_axis_placeholder" placeholder="např. Obrat (Kč)" />
+                    </label>
+                  </div>
+
+                  <div id="chart-series-list" class="chart-series-list"></div>
+
+                  <div class="form-actions">
+                    <button id="add-series" class="btn" type="button" data-i18n="add_series_button">+ Přidat řadu</button>
+                    <button id="add-chart" class="btn primary" type="button" data-i18n="add_chart_button">Přidat graf</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="rp-accordion">
+              <button class="rp-accordion-header" type="button" data-section="settings">
+                <span data-i18n="more_settings_heading">Více nastavení</span>
+                <span class="rp-chevron">&#10095;</span>
+              </button>
+              <div id="rp-section-settings" class="rp-accordion-body">
+                <div class="settings-form">
+                  <div class="form-row">
+                    <label><span data-i18n="number_format_label">Formát čísel</span>
+                      <select id="setting-number-format">
+                        <option value="#,##0.00" data-i18n="number_format_decimal_2">1 234,56</option>
+                        <option value="#,##0" data-i18n="number_format_integer">1 235</option>
+                        <option value="#,##0.0000" data-i18n="number_format_decimal_4">1 234,5678</option>
+                        <option value="0%" data-i18n="number_format_percent">12%</option>
+                        <option value="0.00%" data-i18n="number_format_percent_2">12,34%</option>
+                      </select>
+                    </label>
+                    <label><span data-i18n="date_time_format_label">Formát data a času</span>
+                      <select id="setting-date-time-format">
+                        <option value="dd.MM.yyyy HH:mm" data-i18n="date_time_format_datetime">24.08.2026 14:30</option>
+                        <option value="dd.MM.yyyy" data-i18n="date_time_format_date">24.08.2026</option>
+                        <option value="HH:mm" data-i18n="date_time_format_time">14:30</option>
+                        <option value="yyyy-MM-dd" data-i18n="date_time_format_iso">2026-08-24</option>
+                        <option value="dd/MM/yyyy" data-i18n="date_time_format_slash">24/08/2026</option>
+                      </select>
+                    </label>
+                  </div>
+                  <div class="form-row">
+                    <label><span data-i18n="color_scheme_label">Barevné schéma</span>
+                      <select id="setting-color-scheme">
+                        <option value="default" data-i18n="color_scheme_default">Výchozí</option>
+                        <option value="warm" data-i18n="color_scheme_warm">Teplé</option>
+                        <option value="cool" data-i18n="color_scheme_cool">Studené</option>
+                        <option value="pastel" data-i18n="color_scheme_pastel">Pastel</option>
+                      </select>
+                    </label>
+                    <label><span data-i18n="row_limit_label">Limit řádků</span>
+                      <input type="number" id="setting-row-limit" value="1000" min="0" step="100" data-i18n-placeholder="row_limit_placeholder" placeholder="0 = neomezeně">
+                    </label>
+                  </div>
+                  <div class="form-row">
+                    <label><span data-i18n="charts_per_row_label">Grafů na řádek</span>
+                      <select id="setting-charts-per-row">
+                        <option value="1">1</option>
+                        <option value="2">2</option>
+                        <option value="3" selected>3</option>
+                        <option value="4">4</option>
+                      </select>
+                    </label>
+                    <label><span data-i18n="chart_height_label">Výška karty (px)</span>
+                      <input type="number" id="setting-chart-height" value="360" min="200" max="800" step="20">
+                    </label>
+                  </div>
+                  <div class="form-row">
+                    <label class="inline">
+                      <input type="checkbox" id="setting-show-grid" checked>
+                      <span data-i18n="show_grid_checkbox">Zobrazit mřížku grafu</span>
+                    </label>
+                    <label class="inline">
+                      <input type="checkbox" id="setting-replace-null" checked>
+                      <span data-i18n="replace_null_checkbox">Nahradit NULL prázdnou hodnotou</span>
+                    </label>
+                    <label class="inline">
+                      <input type="checkbox" id="setting-color-numeric-sign">
+                      <span data-i18n="color_numeric_sign_checkbox">Červeně záporná / zeleně kladná čísla</span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="view-modeling-page" class="hidden">
+      <header class="builder-header">
+        <input id="view-name-input" class="title-input" data-i18n-placeholder="view_name_placeholder" placeholder="Název view" />
+        <input id="view-modeling-description" class="title-input" data-i18n-placeholder="view_description_placeholder" placeholder="Popis view" />
+        <div class="connector-select-box">
+          <label class="inline">
+            <span data-i18n="view_connector_label">Konektor</span>
+            <select id="view-connector-select"></select>
+          </label>
+          <span id="view-connector-warning" class="connector-warning hidden" data-i18n="view_connector_switch_warning" title="Změnou konektoru se view uloží pod novým zdrojem dat; struktura musí být kompatibilní.">⚠ zdroj dat se změní</span>
+        </div>
+        <div class="api-box">
+          <label class="inline api-toggle">
+            <input type="checkbox" id="view-api-enabled">
+            <span data-i18n="api_enabled_checkbox">API</span>
+          </label>
+          <label class="inline api-toggle api-put-toggle hidden" id="view-api-put-label">
+            <input type="checkbox" id="view-api-put-enabled">
+            <span data-i18n="api_put_enabled_checkbox">PUT</span>
+          </label>
+          <select id="view-api-type" class="api-type-select">
+            <option value="flat" data-i18n="api_type_flat">Tabulkový</option>
+            <option value="tree" data-i18n="api_type_tree">Stromový</option>
+          </select>
+          <button id="download-api-bat" class="btn small" type="button" data-i18n="download_api_bat_button">.bat</button>
+        </div>
+        <div class="actions">
+          <button id="save-view" class="btn small save"><span data-i18n="save_view_button">Uložit</span></button>
+          <button id="preview-view" class="btn small preview"><span data-i18n="preview_view_button">Náhled</span></button>
+          <button id="delete-view" class="btn small danger" type="button"><span data-i18n="delete_view_button">Smazat</span></button>
+        </div>
+      </header>
+
+      <div class="view-builder">
+        <div class="panel">
+          <h3 data-i18n="add_source_panel_heading">Přidat tabulku / view</h3>
+          <div class="form-row add-source-row">
+            <label>
+              <span data-i18n="table_input_label">Tabulka</span>
+              <input id="table-search" type="text" list="table-options" data-i18n-placeholder="table_input_placeholder" placeholder="Začněte psát název..." autocomplete="off" />
+              <datalist id="table-options"></datalist>
+            </label>
+            <span class="source-separator" data-i18n="source_separator">nebo</span>
+            <label>
+              <span data-i18n="view_input_label">View</span>
+              <input id="view-search" type="text" list="view-options" data-i18n-placeholder="view_input_placeholder" placeholder="Vyberte view..." autocomplete="off" />
+              <datalist id="view-options"></datalist>
+            </label>
+            <label>
+              <span data-i18n="alias_input_label">Alias</span>
+              <input id="subview-alias" type="text" data-i18n-placeholder="alias_input_placeholder" placeholder="např. a" />
+            </label>
+            <button id="add-subview" class="btn" type="button" data-i18n="add_subview_button">+ Přidat</button>
+          </div>
+          <p class="hint" data-i18n="add_source_hint">Vyberte tabulku nebo uložené view z našeptávače, přidá se na plátno. Z každého zdroje můžete vybírat sloupce a zadávat jejich alias.</p>
+        </div>
+
+        <div class="view-builder-main">
+          <div class="panel query-canvas-panel">
+            <h3 data-i18n="query_canvas_heading">Plátno tabulek</h3>
+            <div id="query-canvas-wrapper" class="query-canvas-wrapper">
+              <svg id="join-svg" class="join-svg"></svg>
+              <div id="query-canvas" class="query-canvas"></div>
+              <div id="join-tooltip" class="join-tooltip hidden"></div>
+            </div>
+          </div>
+
+          <div class="panel joins-panel">
+            <h3 data-i18n="joins_heading">Joiny</h3>
+            <div id="join-list"></div>
+            <button id="add-join" class="btn" type="button" data-i18n="add_join_button">+ Přidat join</button>
+            <p class="hint" data-i18n="joins_hint">Join mezi primární a dalšími tabulkami. Vztah je obyčejný bez ON DELETE/UPDATE.</p>
+          </div>
+        </div>
+
+        <div class="panel custom-columns-panel">
+          <div class="panel-header-inline">
+            <h3 data-i18n="custom_columns_heading">Vlastní sloupce</h3>
+            <button id="add-custom-column" class="btn small" type="button" data-i18n="add_custom_column_button">+ Přidat vlastní sloupec</button>
+            <p class="hint" data-i18n="custom_columns_hint">Přidejte vlastní výrazy (např. 1.5 * [Tabulka].[Sloupec] nebo CASE WHEN ... END). Zobrazí se v SELECT za běžnými sloupci.</p>
+          </div>
+          <div id="custom-columns-list" class="custom-columns-list"></div>
+        </div>
+
+        <div class="panel where-panel">
+          <div class="panel-header-inline">
+            <h3 data-i18n="where_heading">Podmínky (WHERE)</h3>
+            <button id="add-where" class="btn small" type="button" data-i18n="add_where_button">+ Přidat podmínku</button>
+            <p class="hint" data-i18n="where_hint">Kliknutím na sloupec v tabulce na plátně vložíte odkaz do aktivního řádku Hodnota. Do hodnoty lze zadat i subselect v závorkách.</p>
+          </div>
+          <div class="where-editor">
+            <table class="where-table">
+              <thead>
+                <tr>
+                  <th data-i18n="where_paren_open_header">(</th>
+                  <th data-i18n="where_table_header">Tabulka</th>
+                  <th data-i18n="where_column_header">Sloupec</th>
+                  <th data-i18n="where_operator_header">Operátor</th>
+                  <th data-i18n="where_second_table_header">2. tabulka</th>
+                  <th data-i18n="where_second_column_header">2. sloupec</th>
+                  <th data-i18n="where_value_header">Hodnota</th>
+                  <th data-i18n="where_paren_close_header">)</th>
+                  <th data-i18n="where_logic_header">AND/OR</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="where-list"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="panel order-group-panel">
+          <div class="panel-header-inline">
+            <h3 data-i18n="order_group_heading">ORDER BY / GROUP BY</h3>
+            <button id="add-order-by" class="btn small" type="button" data-i18n="add_order_by_button">+ Přidat řazení</button>
+            <p class="hint" data-i18n="order_group_hint">Vlevo řazení výsledků, vpravo seskupení a agregace sloupců.</p>
+          </div>
+          <div class="order-group-grid">
+            <div class="order-group-left">
+              <h4 data-i18n="order_by_heading">Řazení</h4>
+              <div id="order-by-list" class="order-by-list"></div>
+            </div>
+            <div class="order-group-right">
+              <h4 data-i18n="group_by_heading">GROUP BY + Agregace</h4>
+              <div id="group-by-list" class="group-by-list"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel preview-panel">
+          <div class="panel-header-inline">
+            <h3 data-i18n="preview_heading">Náhled SQL a dat</h3>
+            <button id="preview-view-panel" class="btn small preview" type="button" data-i18n="preview_view_button">Náhled</button>
+          </div>
+          <pre id="preview-sql" class="sql-preview"></pre>
+          <div class="table-wrap">
+            <table id="preview-table" class="data-table">
+              <thead></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <p id="preview-row-count" class="row-count"></p>
+        </div>
+      </div>
+    </div>
+
+    <div id="connectors-page" class="hidden">
+      <header class="builder-header">
+        <h2 data-i18n="connectors_page_heading">Správa konektorů</h2>
+      </header>
+      <form id="connector-form" class="connector-form">
+        <input type="hidden" id="connector-id" />
+        <div class="form-row">
+          <label class="full-width"><span data-i18n="connector_name_label">Název konektoru</span>
+            <input id="connector-name" type="text" data-i18n-placeholder="connector_name_placeholder" placeholder="např. Maister produkce" />
+          </label>
+        </div>
+        <div class="form-row compact">
+          <label><span data-i18n="connector_db_type_label">Typ databáze</span>
+            <select id="connector-db-type">
+              <option value="mssql" data-i18n="connector_db_type_mssql">Microsoft SQL Server</option>
+              <option value="mysql" data-i18n="connector_db_type_mysql">MySQL / MariaDB</option>
+              <option value="postgresql" data-i18n="connector_db_type_postgresql">PostgreSQL</option>
+              <option value="sqlite" data-i18n="connector_db_type_sqlite">SQLite (soubor)</option>
+            </select>
+          </label>
+          <label><span data-i18n="connector_db_host_label">Server</span>
+            <input id="connector-db-host" type="text" />
+          </label>
+          <label><span data-i18n="connector_db_port_label">Port</span>
+            <input id="connector-db-port" type="number" value="1433" />
+          </label>
+          <label><span data-i18n="connector_db_name_label">Databáze</span>
+            <input id="connector-db-name" type="text" />
+          </label>
+          <label><span data-i18n="connector_db_user_label">Uživatel</span>
+            <input id="connector-db-user" type="text" />
+          </label>
+          <label><span data-i18n="connector_db_password_label">Heslo</span>
+            <input id="connector-db-password" type="password" />
+          </label>
+        </div>
+        <div class="form-row compact">
+          <label><span data-i18n="connector_db_driver_label">Driver</span>
+            <input id="connector-db-driver" type="text" value="ODBC Driver 17 for SQL Server" />
+          </label>
+          <label><span data-i18n="connector_view_mode_label">Režim výpisu view</span>
+            <select id="connector-view-mode">
+              <option value="tabobecny_prehled">TabObecnyPrehled</option>
+              <option value="sys_views">sys.views</option>
+            </select>
+          </label>
+          <label><span data-i18n="connector_api_tenant_label">API tenant</span>
+            <input id="connector-api-tenant" type="text" />
+          </label>
+          <label class="api-key-field"><span data-i18n="connector_api_key_label">API klíč</span>
+            <span class="input-with-button">
+              <input id="connector-api-key" type="text" />
+              <button id="generate-api-key" type="button" class="btn small" data-i18n="generate_api_key_button">Vygenerovat</button>
+            </span>
+          </label>
+          <label><span data-i18n="connector_api_key_header_label">Hlavička</span>
+            <input id="connector-api-key-header" type="text" value="X-API-Key" />
+          </label>
+        </div>
+        <div class="form-row compact">
+          <label class="full-width"><span data-i18n="connector_api_allowed_ips_label">Povolené IP adresy (oddělené čárkou)</span>
+            <input id="connector-api-allowed-ips" type="text" />
+          </label>
+          <label><span data-i18n="connector_api_rate_limit_label">Limit/min (0 = neomezeně)</span>
+            <input id="connector-api-rate-limit" type="number" value="0" />
+          </label>
+        </div>
+        <div class="form-actions">
+          <button id="save-connector" class="btn primary" type="button" data-i18n="save_connector_button">Uložit konektor</button>
+          <button id="test-connector" class="btn" type="button" data-i18n="test_connector_button">Ověřit připojení</button>
+          <button id="delete-connector" class="btn danger hidden" type="button" data-i18n="delete_connector_button">Smazat</button>
+          <button id="cancel-connector" class="btn" type="button" data-i18n="cancel_connector_button">Zrušit</button>
+        </div>
+        <div id="connector-test-result" class="connector-test-result hidden"></div>
+      </form>
+    </div>
+  </section>
+</main>
+
+  <!-- Modal for column alias editing -->
+<div id="alias-modal" class="modal hidden">
+  <div class="modal-backdrop"></div>
+  <div class="modal-content">
+    <h4 data-i18n="alias_modal_title">Přejmenovat sloupec</h4>
+    <p id="alias-original"></p>
+    <input id="alias-input" type="text" data-i18n-placeholder="alias_input_placeholder" placeholder="Zobrazovaný název" />
+    <div class="modal-actions">
+      <button id="alias-cancel" class="btn" data-i18n="alias_cancel_button">Zrušit</button>
+      <button id="alias-save" class="btn primary" data-i18n="alias_save_button">Uložit</button>
+    </div>
+  </div>
+</div>
+
+  <!-- Modal for table alias editing -->
+<div id="table-alias-modal" class="modal hidden">
+  <div class="modal-backdrop"></div>
+  <div class="modal-content">
+    <h4 data-i18n="table_alias_modal_title">Přejmenovat tabulku</h4>
+    <p id="table-alias-original"></p>
+    <input id="table-alias-input" type="text" data-i18n-placeholder="table_alias_placeholder" placeholder="Alias tabulky" />
+    <div class="modal-actions">
+      <button id="table-alias-cancel" class="btn" data-i18n="alias_cancel_button">Zrušit</button>
+      <button id="table-alias-save" class="btn primary" data-i18n="alias_save_button">Uložit</button>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+{% block scripts %}
+<script src="/static/view-modeling.js"></script>
+<script src="/static/connectors.js"></script>
+<script src="/static/app.js"></script>
+{% endblock %}
