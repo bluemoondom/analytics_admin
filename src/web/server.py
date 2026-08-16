@@ -6,6 +6,10 @@ Usage:
     #   SSL_PFX_PATH=C:\\certs\\app.pfx  SSL_PFX_PASSWORD=secret
     #   python -m src.web.server
     # or pass PEM files directly via SSL_CERTFILE / SSL_KEYFILE.
+
+    After installing the package from PyPI, the equivalent entry points are:
+        analytics-admin-bi
+        python -m web.server
 """
 
 from __future__ import annotations
@@ -37,8 +41,14 @@ def main() -> None:
     if cert_key is not None:
         kwargs["ssl_certfile"], kwargs["ssl_keyfile"] = cert_key
 
+    # Resolve the app import string relative to this module's own package,
+    # so it works both in development (run as "src.web.server", with __package__
+    # == "src.web") and once installed from PyPI (run as "web.server", with
+    # __package__ == "web", since the src-layout build strips the "src" prefix).
+    app_import_string = f"{__package__}.main:create_app"
+
     config = uvicorn.Config(
-        "src.web.main:create_app",
+        app_import_string,
         factory=True,
         host=settings.HTTP_HOST,
         port=settings.HTTP_PORT,
