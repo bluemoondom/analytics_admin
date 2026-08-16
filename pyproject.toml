@@ -4,7 +4,7 @@ requires = ["setuptools>=61.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
  
 [project]
-name = "analytics-admin-bi"
+name = "BI-Analytics-admin"
 version = "0.1.0"
 description = "Python project for datascience, web, and MSSQL integration"
 authors = [{name = "bluemoondom", email = "pillerova@mojeit.eu"}]
@@ -18,7 +18,7 @@ classifiers = [
 dynamic = ["dependencies"]
  
 [project.scripts]
-analytics-admin-bi = "web.server:main"
+BI-Analytics-admin = "web.server:main"
  
 [tool.setuptools.dynamic]
 dependencies = {file = ["requirements.txt"]}
