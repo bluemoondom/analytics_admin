@@ -56,11 +56,11 @@ def login(request: LoginRequest):
     email_sent = send_magic_link_email(
         request.email,
         url,
-        subject=f"Přihlašovací odkaz – {get_settings().APP_TITLE}",
+        subject=f"Login link – {get_settings().APP_TITLE}",
     )
-    message = "Přihlašovací odkaz byl odeslán na váš email."
+    message = "A login link has been sent to your email."
     if not email_sent:
-        message = "Přihlašovací odkaz vygenerován (email nebyl odeslán – zkontrolujte SMTP konfiguraci)."
+        message = "Login link generated (email was not sent – please check the SMTP configuration)."
     return MagicLinkResponse(
         email=request.email,
         magic_link="",
@@ -72,16 +72,16 @@ def login(request: LoginRequest):
 def register(request: RegisterRequest):
     """Create a pending new_admin account, send verification email, and return the link."""
     if not get_settings().REGISTRATION_ENABLED:
-        raise HTTPException(status_code=403, detail="Registrace není povolena.")
+        raise HTTPException(status_code=403, detail="Registration is not enabled.")
     _user, _token, url = register_user(request.email)
     email_sent = send_magic_link_email(
         request.email,
         url,
-        subject=f"Ověření registrace – {get_settings().APP_TITLE}",
+        subject=f"Registration verification – {get_settings().APP_TITLE}",
     )
-    message = "Registrace úspěšná. Ověřovací odkaz byl odeslán na váš email."
+    message = "Registration successful. A verification link has been sent to your email."
     if not email_sent:
-        message = "Registrace úspěšná (email nebyl odeslán – zkontrolujte SMTP konfiguraci)."
+        message = "Registration successful (email was not sent – please check the SMTP configuration)."
     return MagicLinkResponse(
         email=request.email,
         magic_link=url,
@@ -121,14 +121,14 @@ def magic_link_redirect_page(token: str, request: Request):
         return RedirectResponse(url="/login?error=invalid", status_code=302)
     html = (
         "<!DOCTYPE html>\n"
-        "<html lang=\"cs\">\n"
+        "<html lang=\"en\">\n"
         "<head>"
         "<meta charset=\"UTF-8\" />"
         "<meta http-equiv=\"refresh\" content=\"0;url=/\" />"
-        "<title>Přihlašování…</title>"
+        "<title>Signing in…</title>"
         "</head>\n"
         "<body>\n"
-        "  <p>Přihlašuji…</p>\n"
+        "  <p>Signing in…</p>\n"
         "</body>\n"
         "</html>"
     )

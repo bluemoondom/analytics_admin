@@ -23,16 +23,16 @@ def send_magic_link_email(to_email: str, magic_link: str, subject: str | None = 
         return False
 
     app_title = get_settings().APP_TITLE
-    subj = subject or f"Přihlašovací odkaz – {app_title}"
+    subj = subject or f"Login link – {app_title}"
 
     html_body = _render_html_template(magic_link, app_title)
     text_body = (
-        f"Dobrý den,\n\n"
-        f"pro přihlášení do aplikace {app_title} klikněte na následující odkaz:\n\n"
+        f"Hello,\n\n"
+        f"To sign in to {app_title}, click the following link:\n\n"
         f"{magic_link}\n\n"
-        f"Odkaz je platný 15 minut a lze jej použít pouze jednou.\n\n"
-        f"Pokud jste o přihlášení nežádali, tento email můžete ignorovat.\n\n"
-        f"S pozdravem\n{app_title}"
+        f"The link is valid for 15 minutes and can only be used once.\n\n"
+        f"If you did not request this login, you can safely ignore this email.\n\n"
+        f"Best regards,\n{app_title}"
     )
 
     msg = MIMEMultipart("alternative")
@@ -59,11 +59,11 @@ def send_magic_link_email(to_email: str, magic_link: str, subject: str | None = 
 def _render_html_template(magic_link: str, app_title: str) -> str:
     """Return a styled HTML email body with a prominent CTA button."""
     return f"""<!DOCTYPE html>
-<html lang="cs">
+<html lang="en">
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Přihlášení – {_escape(app_title)}</title>
+<title>Login – {_escape(app_title)}</title>
 <style>
   body {{ margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f4f6f9; color: #1a1a2e; }}
   .container {{ max-width: 480px; margin: 40px auto; background: #ffffff; border-radius: 12px; box-shadow: 0 4px 24px rgba(0,0,0,0.08); overflow: hidden; }}
@@ -85,26 +85,26 @@ def _render_html_template(magic_link: str, app_title: str) -> str:
   <div class="container">
     <div class="header">
       <h1>&#128274; {_escape(app_title)}</h1>
-      <p>Bezpečné přihlášení jedním kliknutím</p>
+      <p>Secure one-click sign-in</p>
     </div>
     <div class="content">
-      <p>Dobrý den,</p>
-      <p>právě jste požádali o přihlášení. Klikněte na tlačítko níže pro okamžité přihlášení do aplikace.</p>
+      <p>Hello,</p>
+      <p>You just requested to sign in. Click the button below to sign in to the application instantly.</p>
       <div class="cta">
-        <a href="{_escape(magic_link)}">Přihlásit se</a>
+        <a href="{_escape(magic_link)}">Sign in</a>
       </div>
-      <p>Odkaz je platný <strong>15 minut</strong> a lze jej použít pouze jednou.</p>
+      <p>The link is valid for <strong>15 minutes</strong> and can only be used once.</p>
       <div class="warning">
-        Pokud jste o přihlášení nežádali, tento email můžete ignorovat.
-        Nikomu nepředávejte tento odkaz.
+        If you did not request this login, you can ignore this email.
+        Do not share this link with anyone.
       </div>
       <div class="link-fallback">
-        Pokud tlačítko nefunguje, zkopírujte tento odkaz do prohlížeče:<br/>
+        If the button doesn't work, copy this link into your browser:<br/>
         <code>{_escape(magic_link)}</code>
       </div>
     </div>
     <div class="footer">
-      {_escape(app_title)} &bull; Automatický email, neodpovídejte
+      {_escape(app_title)} &bull; Automated email, please do not reply
     </div>
   </div>
 </body>
