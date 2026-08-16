@@ -14,11 +14,10 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
+dynamic = ["dependencies"]
 
 [project.scripts]
-BI-analytics-admin = "src.web.server:main"
-
-dynamic = ["dependencies"]
+BI-analytics-admin = "web.server:main"
 
 [tool.setuptools.dynamic]
 dependencies = {file = ["requirements.txt"]}
