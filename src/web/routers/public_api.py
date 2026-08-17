@@ -248,18 +248,20 @@ def health():
 
 
 @router.get("/{tenant}/{view_name}")
+@router.post("/{tenant}/{view_name}")
 async def public_view(tenant: str, view_name: str, request: Request):
     """Return JSON data for an exported view under its owning tenant.
 
-    If the request body contains a JSON object with column names as keys and
-    filter values, the response is filtered by those columns.  Without a body
-    the full view result is returned.
+    Accepts both GET and POST. If the request body contains a JSON object with
+    column names as keys and filter values, the response is filtered by those
+    columns. Without a body the full view result is returned.
     """
     client_ip = _get_client_ip(request)
     api_logger.info(
-        "request tenant=%s view=%s ip=%s user_agent=%s",
+        "request tenant=%s view=%s method=%s ip=%s user_agent=%s",
         tenant,
         view_name,
+        request.method,
         client_ip,
         request.headers.get("user-agent", ""),
     )
