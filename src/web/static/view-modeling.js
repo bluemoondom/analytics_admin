@@ -1761,7 +1761,7 @@
   }
 
   function generateBatTemplate(viewName, cfg) {
-    const apiUrl = (cfg.api_base_url || 'http://127.0.0.1:8443').replace(/\/$/, '');
+    const apiUrl = (cfg.api_base_url || 'http://127.0.0.1:8000').replace(/\/$/, '');
     const apiKeyHeader = cfg.api_key_header || 'X-API-Key';
     const prefix = cfg.api_key_prefix || '';
     const method = cfg.method === 'GET' ? 'PUT' : 'GET';

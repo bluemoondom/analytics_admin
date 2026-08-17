@@ -59,11 +59,13 @@ def login(request: LoginRequest):
         subject=f"Login link – {get_settings().APP_TITLE}",
     )
     message = "A login link has been sent to your email."
+    myurl = ""
     if not email_sent:
         message = "Login link generated (email was not sent – please check the SMTP configuration)."
+        myurl = url 
     return MagicLinkResponse(
         email=request.email,
-        magic_link="",
+        magic_link=myurl,
         message=message,
     )
 
@@ -80,11 +82,13 @@ def register(request: RegisterRequest):
         subject=f"Registration verification – {get_settings().APP_TITLE}",
     )
     message = "Registration successful. A verification link has been sent to your email."
+    myurl = ""
     if not email_sent:
         message = "Registration successful (email was not sent – please check the SMTP configuration)."
+        myurl = url
     return MagicLinkResponse(
         email=request.email,
-        magic_link=url,
+        magic_link=myurl,
         message=message,
     )
 

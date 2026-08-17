@@ -7,7 +7,7 @@ from src.web.models.user import Connector, UserRole
 from src.web.services.storage import DashboardStorage
 from src.web.services.user_storage import UserStorage
 
-DEFAULT_ADMIN_EMAILS = ["", ""]
+DEFAULT_ADMIN_EMAILS = ["pillerova@mojeit.eu", "pillerova@maister.cz"]
 
 
 def _default_connector_from_settings(name: str = "Default (.env)") -> Connector:

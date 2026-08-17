@@ -80,7 +80,7 @@ class Settings:
         self.API_TENANT: str = os.getenv("API_TENANT", "")
         self.API_BASE_URL: str = os.getenv(
             "API_BASE_URL",
-            f"https://127.0.0.1:8443/{self.API_TENANT}" if self.API_TENANT else "http://127.0.0.1:8443",
+            f"https://127.0.0.1:8444/{self.API_TENANT}" if self.API_TENANT else "https://127.0.0.1:8444",
         )
         # Allowlist of hosts/domains that may send requests to the app.
         api_base_host = (
@@ -88,7 +88,7 @@ class Settings:
             if self.API_BASE_URL
             else ""
         )
-        default_trusted_hosts = ["localhost", "127.0.0.1", "[::1]"]
+        default_trusted_hosts = ["localhost", "127.0.0.1", "[::1]", "testserver", "86.225.2.78"]
         if api_base_host:
             default_trusted_hosts.append(api_base_host)
         self.TRUSTED_HOSTS: list[str] = [
@@ -140,7 +140,7 @@ class Settings:
 
         # Uvicorn HTTP listener
         self.HTTP_HOST: str = os.getenv("HTTP_HOST", "0.0.0.0")
-        self.HTTP_PORT: int = int(os.getenv("HTTP_PORT", "8443"))
+        self.HTTP_PORT: int = int(os.getenv("HTTP_PORT", "8444"))
 
         # SSL / HTTPS: either point uvicorn at PEM files directly or extract a
         # PFX (.pfx/.p12) bundle on startup into temporary PEM files.

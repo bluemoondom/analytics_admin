@@ -12,6 +12,7 @@ import pymssql
 
 from src.web.config import get_settings
 from src.web.models.user import Connector, User, UserRole
+from src.web.services.encryption import decrypt, encrypt
 
 
 class UserStorageError(Exception):
@@ -101,6 +102,7 @@ class UserStorage:
                 conn.execute("ALTER TABLE connectors ADD COLUMN db_type TEXT NOT NULL DEFAULT 'mssql'")
             except sqlite3.OperationalError:
                 pass
+            self._migrate_encrypt_secrets_sqlite(conn)
             conn.commit()
 
     def _ensure_mssql_tables(self) -> None:
@@ -171,6 +173,18 @@ class UserStorage:
             )
             cur.execute(
                 """
+                IF COL_LENGTH('connectors', 'db_password') IS NOT NULL
+                ALTER TABLE connectors ALTER COLUMN db_password NVARCHAR(500) NOT NULL
+                """
+            )
+            cur.execute(
+                """
+                IF COL_LENGTH('connectors', 'api_key') IS NOT NULL
+                ALTER TABLE connectors ALTER COLUMN api_key NVARCHAR(500) NOT NULL
+                """
+            )
+            cur.execute(
+                """
                 IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'magic_links')
                 CREATE TABLE magic_links (
                     token_hash NVARCHAR(64) PRIMARY KEY,
@@ -191,7 +205,44 @@ class UserStorage:
                 )
                 """
             )
+            self._migrate_encrypt_secrets_mssql(cur)
             conn.commit()
+
+    def _migrate_encrypt_secrets_sqlite(self, conn: sqlite3.Connection) -> None:
+        """Encrypt any plaintext db_password / api_key values in SQLite."""
+        rows = conn.execute(
+            "SELECT id, db_password, api_key FROM connectors"
+        ).fetchall()
+        for row in rows:
+            row_id = row[0]
+            db_password = row[1]
+            api_key = row[2]
+            updates: dict[str, str] = {}
+            if db_password and not db_password.startswith("gAAAA"):
+                updates["db_password"] = encrypt(db_password)
+            if api_key and not api_key.startswith("gAAAA"):
+                updates["api_key"] = encrypt(api_key)
+            if updates:
+                cols = ", ".join(f"{k} = ?" for k in updates)
+                params = (*updates.values(), row_id)
+                conn.execute(f"UPDATE connectors SET {cols} WHERE id = ?", params)
+
+    def _migrate_encrypt_secrets_mssql(self, cur) -> None:
+        """Encrypt any plaintext db_password / api_key values in MSSQL."""
+        cur.execute("SELECT id, db_password, api_key FROM connectors")
+        rows = cur.fetchall()
+        for row in rows:
+            db_password = row[1]
+            api_key = row[2]
+            updates: dict[str, str] = {}
+            if db_password and not db_password.startswith("gAAAA"):
+                updates["db_password"] = encrypt(db_password)
+            if api_key and not api_key.startswith("gAAAA"):
+                updates["api_key"] = encrypt(api_key)
+            if updates:
+                cols = ", ".join(f"{k} = %s" for k in updates)
+                params = (*updates.values(), row[0])
+                cur.execute(f"UPDATE connectors SET {cols} WHERE id = %s", params)
 
     # ------------------------------------------------------------------
     # Helpers
@@ -223,11 +274,11 @@ class UserStorage:
             db_port=row["db_port"],
             db_name=row["db_name"],
             db_user=row["db_user"],
-            db_password=row["db_password"],
+            db_password=decrypt(row["db_password"]),
             db_driver=row["db_driver"],
             view_discovery_mode=row["view_discovery_mode"],
             api_tenant=row["api_tenant"],
-            api_key=row["api_key"],
+            api_key=decrypt(row["api_key"]),
             api_key_header=row["api_key_header"],
             api_allowed_ips=json.loads(row["api_allowed_ips"] or "[]"),
             api_max_requests_per_minute=row["api_max_requests_per_minute"],
@@ -412,8 +463,8 @@ class UserStorage:
                 (
                     connector.user_id, connector.name, connector.db_type or "mssql",
                     connector.db_host, connector.db_port, connector.db_name,
-                    connector.db_user, connector.db_password, connector.db_driver,
-                    connector.view_discovery_mode, connector.api_tenant, connector.api_key,
+                    connector.db_user, encrypt(connector.db_password), connector.db_driver,
+                    connector.view_discovery_mode, connector.api_tenant, encrypt(connector.api_key),
                     connector.api_key_header, json.dumps(connector.api_allowed_ips),
                     connector.api_max_requests_per_minute, now, now,
                 ),
@@ -443,8 +494,8 @@ class UserStorage:
                 (
                     connector.user_id, connector.name, connector.db_type or "mssql",
                     connector.db_host, connector.db_port, connector.db_name,
-                    connector.db_user, connector.db_password, connector.db_driver,
-                    connector.view_discovery_mode, connector.api_tenant, connector.api_key,
+                    connector.db_user, encrypt(connector.db_password), connector.db_driver,
+                    connector.view_discovery_mode, connector.api_tenant, encrypt(connector.api_key),
                     connector.api_key_header, json.dumps(connector.api_allowed_ips),
                     connector.api_max_requests_per_minute,
                 ),
@@ -551,8 +602,8 @@ class UserStorage:
                 (
                     connector.user_id, connector.name, connector.db_type or "mssql",
                     connector.db_host, connector.db_port, connector.db_name,
-                    connector.db_user, connector.db_password, connector.db_driver,
-                    connector.view_discovery_mode, connector.api_tenant, connector.api_key,
+                    connector.db_user, encrypt(connector.db_password), connector.db_driver,
+                    connector.view_discovery_mode, connector.api_tenant, encrypt(connector.api_key),
                     connector.api_key_header, json.dumps(connector.api_allowed_ips),
                     connector.api_max_requests_per_minute, now, connector.id,
                 ),
@@ -581,8 +632,8 @@ class UserStorage:
                 (
                     connector.user_id, connector.name, connector.db_type or "mssql",
                     connector.db_host, connector.db_port, connector.db_name,
-                    connector.db_user, connector.db_password, connector.db_driver,
-                    connector.view_discovery_mode, connector.api_tenant, connector.api_key,
+                    connector.db_user, encrypt(connector.db_password), connector.db_driver,
+                    connector.view_discovery_mode, connector.api_tenant, encrypt(connector.api_key),
                     connector.api_key_header, json.dumps(connector.api_allowed_ips),
                     connector.api_max_requests_per_minute, connector.id,
                 ),

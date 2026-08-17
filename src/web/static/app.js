@@ -1383,7 +1383,7 @@
       const mainDim = dimCols[0];
       const groups = groupByKeys(rows, [mainDim]);
       groups.forEach(({ keyValues, rows: groupRows }) => {
-        const mainRow = buildSummaryRow(groupRows, mainHeaderCols, [mainDim], drillCols);
+        const mainRow = buildSummaryRow(groupRows, mainHeaderCols, [mainDim], drillCols, undefined, dimCols);
         const groupKey = keyValues.join('|');
         const expandable = dimCols.length > 1 || attrCols.length > 0;
         const r = createTableRow(mainHeaderCols, mainRow, 'group-row', expandable, groupKey, groupRows.length, drillCols);
@@ -1499,10 +1499,11 @@
     groups.forEach(({ keyValues, rows }) => {
       const value = keyValues[0];
       const groupKey = (parentKeyValues ? parentKeyValues + '|' : '') + String(value);
-      const summary = buildSummaryRow(rows, headerCols, dimCols.slice(0, level + 1), remainingDims.concat(attrCols));
+      const summary = buildSummaryRow(rows, headerCols, dimCols.slice(0, level + 1), remainingDims.concat(attrCols), undefined, dimCols);
       summary[currentDim] = value;
       const rowClass = `drill-summary-row drill-level-${level}`;
-      const expandable = !isLeaf || attrCols.length > 0;
+      // A leaf group with a single row has nothing more to expand; show all values inline.
+      const expandable = !isLeaf || (attrCols.length > 0 && rows.length > 1);
       const rowEl = createTableRow(headerCols, summary, rowClass, expandable, groupKey, rows.length, remainingDims.concat(attrCols));
       parentElement.appendChild(rowEl);
 
@@ -1577,8 +1578,9 @@
     return 0;
   }
 
-  function buildSummaryRow(rows, cols, dimCols, drillCols, seriesAggs) {
+  function buildSummaryRow(rows, cols, dimCols, drillCols, seriesAggs, allDimCols) {
     const replaceNull = state.currentDashboard.replace_null_with_empty !== false;
+    const dimSet = allDimCols || dimCols;
     const summary = { ...rows[0] };
     cols.forEach(col => {
       if (dimCols.includes(col)) {
@@ -1586,15 +1588,16 @@
         summary[col] = replaceNull && (v === null || v === undefined) ? '' : v;
         return;
       }
+      if (dimSet.includes(col) && drillCols.includes(col)) {
+        // Deeper dimensions are not known at this summary level.
+        summary[col] = replaceNull ? '' : null;
+        return;
+      }
       const agg = seriesAggs ? seriesAggs[col] : state.currentDashboard.aggregations[col];
       if (!agg) {
         // Attribute column (not dimension, not measure): keep a representative value.
         const v = rows[0][col];
         summary[col] = replaceNull && (v === null || v === undefined) ? '' : v;
-        return;
-      }
-      if (drillCols.includes(col)) {
-        summary[col] = replaceNull ? '' : null;
         return;
       }
       const colInfo = state.columns.find(c => c.name === col);
