@@ -88,7 +88,7 @@ class Settings:
             if self.API_BASE_URL
             else ""
         )
-        default_trusted_hosts = ["localhost", "127.0.0.1", "[::1]", "testserver", "86.225.2.78"]
+        default_trusted_hosts = ["localhost", "127.0.0.1", "[::1]", "testserver"]
         if api_base_host:
             default_trusted_hosts.append(api_base_host)
         self.TRUSTED_HOSTS: list[str] = [
