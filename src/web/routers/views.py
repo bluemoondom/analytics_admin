@@ -167,6 +167,8 @@ def get_api_config(user: Annotated[User, Depends(require_user)]):
         "api_base_url": settings.API_BASE_URL,
         "api_key_header": settings.API_KEY_HEADER,
         "api_key_prefix": key[:4] if len(key) >= 4 else "",
+        "ssl_certfile": settings.SSL_CERTFILE or "",
+        "ssl_pfx_path": settings.SSL_PFX_PATH or "",
     }
 
 

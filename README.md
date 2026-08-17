@@ -32,6 +32,7 @@ The view modeling layer allows users to define reusable data structures on top o
 - Selection of the source connector for each view
 - One-click exposure of a view as an API endpoint
 - API access supports GET requests in both tabular and tree (hierarchical) structures, as well as PUT requests
+- **Filtered GET**: send a JSON body with one or more `column: value` pairs to receive only matching rows; if no body is sent, the full view result is returned as before
 - Downloadable sample `.bat` script demonstrating API usage
 - Renaming of tables and columns to custom aliases directly by clicking on the column header
 - Color-coded visual indication when a subview is added to the model

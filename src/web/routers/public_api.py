@@ -15,7 +15,8 @@ import pyodbc
 from fastapi import APIRouter, HTTPException, Request, Response
 
 from src.web.config import get_settings
-from src.web.db import DatabaseError, connector_connection
+from src.web.db import DatabaseError, _sanitize_view_name, connector_connection
+from src.web.dialects import dialect_for_connector
 from src.web.services.user_storage import UserStorage
 from src.web.services.view_modeling import ViewModelingService
 
@@ -247,8 +248,13 @@ def health():
 
 
 @router.get("/{tenant}/{view_name}")
-def public_view(tenant: str, view_name: str, request: Request):
-    """Return JSON data for an exported view under its owning tenant."""
+async def public_view(tenant: str, view_name: str, request: Request):
+    """Return JSON data for an exported view under its owning tenant.
+
+    If the request body contains a JSON object with column names as keys and
+    filter values, the response is filtered by those columns.  Without a body
+    the full view result is returned.
+    """
     client_ip = _get_client_ip(request)
     api_logger.info(
         "request tenant=%s view=%s ip=%s user_agent=%s",
@@ -264,9 +270,17 @@ def public_view(tenant: str, view_name: str, request: Request):
     if not definition.strip():
         raise HTTPException(status_code=500, detail="View has no SQL definition")
 
+    filters = await _read_request_filters(request)
+
     try:
         with _conn_with_cursor(connector) as (_conn, cur):
-            cur.execute(definition)
+            if filters:
+                filtered_sql, params = _build_filtered_sql(
+                    definition, filters, connector
+                )
+                cur.execute(filtered_sql, tuple(params))
+            else:
+                cur.execute(definition)
             columns = [desc[0] for desc in (cur.description or [])]
             rows_raw = cur.fetchall()
             rows = []
@@ -293,6 +307,60 @@ def public_view(tenant: str, view_name: str, request: Request):
         content=json.dumps(response, ensure_ascii=False, default=_json_default),
         media_type="application/json; charset=utf-8",
     )
+
+
+async def _read_request_filters(request: Request) -> dict[str, Any] | None:
+    """Read a JSON filter object from the request body when present.
+
+    Only ``Content-Type: application/json`` payloads are parsed.  An empty body,
+    missing header or invalid JSON returns ``None`` so the caller returns the
+    full result set.
+    """
+    content_type = request.headers.get("content-type", "")
+    if "application/json" not in content_type:
+        return None
+    try:
+        body = await request.body()
+        if hasattr(body, "decode"):
+            body = body.decode("utf-8", errors="replace")
+        else:
+            body = str(body)
+    except (json.JSONDecodeError, ValueError, UnicodeDecodeError, RuntimeError):
+        return None
+    if not body or not body.strip():
+        return None
+    try:
+        parsed = json.loads(body)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    return {str(k).strip(): v for k, v in parsed.items() if str(k).strip()}
+
+
+def _build_filtered_sql(
+    definition: str, filters: dict[str, Any], connector
+) -> tuple[str, list[Any]]:
+    """Wrap the view definition and add safe WHERE conditions for the filters.
+
+    Each filter key must be a plain identifier.  Values are passed as query
+    parameters to avoid SQL injection.  Multiple filters are combined with AND.
+    """
+    dialect = dialect_for_connector(connector)
+    qi = dialect.quote_identifier
+    ph = dialect.param_placeholder
+
+    where_parts: list[str] = []
+    params: list[Any] = []
+    for raw_column, value in filters.items():
+        clean_column = _sanitize_view_name(raw_column)
+        where_parts.append(f"{qi(clean_column)} = {ph}")
+        params.append(value)
+
+    wrapped = f"SELECT * FROM ({definition}) AS sq"
+    if where_parts:
+        wrapped += " WHERE " + " AND ".join(where_parts)
+    return wrapped, params
 
 
 @router.put("/{tenant}/{view_name}")
