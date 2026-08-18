@@ -209,6 +209,10 @@ class ViewModelingService:
     def _columns_of(self, table_name: str) -> list[str]:
         return [c["name"] for c in self.get_columns(table_name)]
 
+    def _columns_info_of(self, table_name: str) -> list[dict[str, Any]]:
+        """Return full column metadata for a table/view."""
+        return self.get_columns(table_name)
+
     _CUSTOM_COLUMN_ALIAS_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
     @classmethod
@@ -365,6 +369,11 @@ class ViewModelingService:
 
         custom_columns = payload.get("custom_columns") or []
 
+        from src.web.dialects import dialect_for_connector
+
+        dialect = dialect_for_connector(self.connector)
+        table_hint = dialect.table_hint()
+
         # Mapping of alias -> real base table name.  Allows using the same base
         # table multiple times on the canvas, each under its own alias.
         table_aliases: dict[str, str] = {}
@@ -393,13 +402,35 @@ class ViewModelingService:
                 return subview_columns[table_name]
             return self._columns_of(_base_table(table_name))
 
+        column_cache: dict[str, list[dict[str, Any]]] = {}
+        column_info: dict[tuple[str, str], dict[str, Any]] = {}
+
+        def _load_columns_info(table_name: str) -> list[dict[str, Any]]:
+            if table_name not in column_cache:
+                if table_name in subview_columns:
+                    column_cache[table_name] = [
+                        {"name": c, "type": "text"} for c in subview_columns[table_name]
+                    ]
+                else:
+                    column_cache[table_name] = self._columns_info_of(_base_table(table_name))
+            info = column_cache[table_name]
+            for c in info:
+                column_info[(table_name, c["name"])] = c
+            return info
+
+        def _column_type(table_name: str, col_name: str) -> dict[str, Any] | None:
+            key = (table_name, col_name)
+            if key not in column_info:
+                _load_columns_info(table_name)
+            return column_info.get(key)
+
         def _quote_source(table_name: str) -> str:
             # Quote a table source.  WHEN the SQL identifier differs from the
             # real table name, emit `[real] AS [alias]`.
             base = _base_table(table_name)
             if base != table_name:
-                return f"{self._qi(base)} AS {self._qi(table_name)}"
-            return self._qi(table_name)
+                return f"{self._qi(base)} AS {self._qi(table_name)} {table_hint}"
+            return f"{self._qi(table_name)} {table_hint}".strip()
 
         available: dict[str, list[str]] = {primary: _table_columns(primary)}
 
@@ -418,6 +449,7 @@ class ViewModelingService:
             for tbl in {left, right}:
                 if tbl and tbl not in available:
                     available[tbl] = _table_columns(tbl)
+                    _load_columns_info(tbl)
             joined_tables.append((left, right, join_type, conditions))
 
         has_joins = bool(joined_tables) or bool(subviews)
@@ -432,6 +464,7 @@ class ViewModelingService:
                 continue
             if table not in available:
                 available[table] = _table_columns(table)
+                _load_columns_info(table)
             if name not in available[table]:
                 raise ViewModelingError(
                     f"Sloupec {name} nepatří do tabulky {table}."
@@ -528,7 +561,7 @@ class ViewModelingService:
                 )
 
         where_sql = self._build_where_sql(
-            payload.get("where_clauses") or [], available, base_table=_base_table
+            payload.get("where_clauses") or [], available, _column_type, base_table=_base_table
         )
         if where_sql:
             sql += "\n" + where_sql
@@ -542,6 +575,7 @@ class ViewModelingService:
                     continue
                 if table not in available:
                     available[table] = _table_columns(table)
+                    _load_columns_info(table)
                 if col not in available[table]:
                     raise ViewModelingError(
                         f"Sloupec {col} nepatří do tabulky {table}."
@@ -564,6 +598,7 @@ class ViewModelingService:
                 else:
                     if table not in available:
                         available[table] = _table_columns(table)
+                        _load_columns_info(table)
                     if col not in available[table]:
                         raise ViewModelingError(
                             f"Sloupec {col} nepatří do tabulky {table}."
@@ -579,13 +614,14 @@ class ViewModelingService:
         self,
         where_clauses: list[dict[str, Any]],
         available: dict[str, list[str]],
+        column_type_fn=None,
         base_table=None,
     ) -> str:
         """Render WHERE clause from user conditions."""
         parts: list[str] = []
         for i, wc in enumerate(where_clauses or []):
             rendered = self._build_condition_sql(
-                wc, available, is_join=False, base_table=base_table
+                wc, available, is_join=False, column_type_fn=column_type_fn, base_table=base_table
             )
             if not rendered:
                 continue
@@ -604,6 +640,7 @@ class ViewModelingService:
         is_join: bool,
         left_table: str = "",
         right_table: str = "",
+        column_type_fn=None,
         base_table=None,
     ) -> str:
         """Render a single condition for WHERE or ON clause."""
@@ -618,10 +655,14 @@ class ViewModelingService:
             return ""
         if left_table not in available:
             available[left_table] = self._columns_of(base(left_table))
+            if column_type_fn is not None:
+                column_type_fn(left_table, left_column)
         if left_column not in available[left_table]:
             raise ViewModelingError(
                 f"Sloupec {left_column} nepatří do tabulky {left_table}."
             )
+
+        left_col_info = column_type_fn(left_table, left_column) if column_type_fn else None
 
         operator = (cond.get("operator") or "=").strip().upper()
         if operator not in {
@@ -679,8 +720,8 @@ class ViewModelingService:
             if has_second or not from_value or not to_value:
                 return ""
             clause = (
-                f"{open_paren}{expr} BETWEEN {self._literal_value(from_value)} "
-                f"AND {self._literal_value(to_value)}{close_paren}"
+                f"{open_paren}{expr} BETWEEN {self._literal_value(from_value, left_col_info)} "
+                f"AND {self._literal_value(to_value, left_col_info)}{close_paren}"
             )
             logical = (cond.get("logical_operator") or "AND").strip().upper()
             if logical not in {"AND", "OR"}:
@@ -694,9 +735,9 @@ class ViewModelingService:
             if raw_value.startswith("("):
                 value_sql = raw_value
             elif operator in {"IN", "NOT IN"}:
-                value_sql = f"({self._split_in_values(raw_value)})"
+                value_sql = f"({self._split_in_values(raw_value, left_col_info)})"
             else:
-                value_sql = self._literal_value(raw_value)
+                value_sql = self._literal_value(raw_value, left_col_info, force_text=operator in {"LIKE", "NOT LIKE"})
 
         clause = f"{open_paren}{expr} {operator} {value_sql}{close_paren}"
         logical = (cond.get("logical_operator") or "AND").strip().upper()
@@ -705,6 +746,7 @@ class ViewModelingService:
         # Logical operator is meaningful only when there is a following condition.
         # Callers decide whether to append it based on position.
         return clause + f" {logical}"
+
 
     def _normalize_subviews(self, payload: dict[str, Any]) -> list[dict[str, Any]]:
         """Return a validated list of subview definitions from the payload."""
@@ -722,8 +764,52 @@ class ViewModelingService:
                     sv = dict(sv)
                     sv["definition"] = row.get("DefView") or ""
                     sv["name"] = row.get("NazevSys") or row.get("Nazev") or alias
+            sv = dict(sv)
+            sv["definition"] = self._add_table_hints_to_subview_sql(sv.get("definition") or "")
             result.append(sv)
         return result
+
+    def _add_table_hints_to_subview_sql(self, sql: str) -> str:
+        """Ensure every physical table source in a subview SQL has a hint.
+
+        This is a best-effort rewrite for MSSQL; other dialects are left
+        unchanged.  If the SQL already contains the hint, it is returned as-is.
+        """
+        if not sql:
+            return sql
+        from src.web.dialects import dialect_for_connector
+
+        if dialect_for_connector(self.connector).table_hint() != "WITH (NOLOCK)":
+            return sql
+        if re.search(r"\bWITH\s*\(\s*NOLOCK\s*\)", sql, re.IGNORECASE):
+            return sql
+
+        def repl(match: re.Match[str]) -> str:
+            keyword = match.group(1)
+            table = match.group(2)
+            alias = match.group(3)
+            if alias:
+                return f"{keyword} {table} {alias} WITH (NOLOCK)"
+            return f"{keyword} {table} WITH (NOLOCK)"
+
+        # Reserved words that can never be a table alias in this context.
+        _RESERVED = (
+            "LEFT|RIGHT|INNER|OUTER|FULL|CROSS|JOIN|ON|WHERE|GROUP|ORDER|HAVING"
+        )
+
+        def _apply(pattern_str: str, text: str) -> str:
+            return re.compile(pattern_str, re.IGNORECASE).sub(repl, text)
+
+        # JOIN sources are followed by ON or another JOIN clause.
+        join_pattern = (
+            rf"\b(JOIN)\s+(\[[^\]]+\]|[A-Za-z_][A-Za-z0-9_]*)(?:(?:\s+AS\s+|\s+)(?!\b(?:{_RESERVED})\b)(\[[^\]]+\]|[A-Za-z_][A-Za-z0-9_]*))?(?=\s+(?:ON|JOIN|LEFT|RIGHT|INNER|OUTER|FULL|CROSS|WHERE|GROUP|ORDER|HAVING|$))"
+        )
+        sql = _apply(join_pattern, sql)
+        # FROM sources are followed by a JOIN clause or a terminating clause.
+        from_pattern = (
+            rf"\b(FROM)\s+(\[[^\]]+\]|[A-Za-z_][A-Za-z0-9_]*)(?:(?:\s+AS\s+|\s+)(?!\b(?:{_RESERVED})\b)(\[[^\]]+\]|[A-Za-z_][A-Za-z0-9_]*))?(?=\s+(?:(?:LEFT|RIGHT|INNER|OUTER|FULL|CROSS)\s+)?JOIN\b|WHERE\b|GROUP\b|ORDER\b|HAVING\b|$)"
+        )
+        return _apply(from_pattern, sql)
 
     def _normalize_join_conditions(
         self, join: dict[str, Any], left: str, right: str
@@ -750,19 +836,20 @@ class ViewModelingService:
             if p.get("left_column") and p.get("right_column")
         ]
 
-    @staticmethod
-    def _split_in_values(raw: str) -> str:
+    def _split_in_values(self, raw: str, col_info: dict[str, Any] | None = None) -> str:
         """Return SQL list from comma-separated user values.
 
-        Numeric tokens are kept as-is; everything else is quoted with single
-        quotes escaped by doubling. Unlike the previous implementation a
-        leading ``'`` never bypasses quoting, so input like ``' OR '1'='1``
-        is rendered as a harmless literal.
+        Tokens for text columns are always quoted with single quotes; numeric
+        tokens for number columns are kept as-is. Unlike the previous
+        implementation a leading ``'`` never bypasses quoting, so input like
+        ``' OR '1'='1`` is rendered as a harmless literal.
         """
+        force_quote = self._is_text_column(col_info)
         values = [v.strip() for v in raw.split(",") if v.strip()]
         return ", ".join(
-            v if ViewModelingService._is_sql_number(v)
-            else "'" + v.replace("'", "''") + "'"
+            "'" + v.replace("'", "''") + "'"
+            if force_quote or not ViewModelingService._is_sql_number(v)
+            else v
             for v in values
         )
 
@@ -776,11 +863,25 @@ class ViewModelingService:
         return True
 
     @staticmethod
-    def _literal_value(value: str) -> str:
-        """Quote a literal value for generated SQL string."""
+    def _is_text_column(col_info: dict[str, Any] | None) -> bool:
+        """Return True when column metadata says the column stores text."""
+        if not col_info:
+            return False
+        return col_info.get("type") == "text" or bool(col_info.get("is_text_storage"))
+
+    def _literal_value(self, value: str, col_info: dict[str, Any] | None = None, force_text: bool = False) -> str:
+        """Quote a literal value for generated SQL string.
+
+        Text columns (including varchar/nvarchar) and operators such as LIKE
+        always produce a single-quoted string, even when the value looks like
+        a number. Leading zeros (e.g. '00100010200') are preserved.
+        """
         stripped = value.strip()
         if stripped.startswith("'") and stripped.endswith("'"):
             return stripped
+        if force_text or self._is_text_column(col_info):
+            escaped = stripped.replace("'", "''")
+            return f"'{escaped}'"
         if stripped.isdigit():
             return stripped
         try:

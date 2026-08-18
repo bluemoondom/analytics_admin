@@ -78,6 +78,9 @@ class MSSQLDialect(SourceDialect):
             WHERE o.name = ? AND i.is_hypothetical = 0 AND i.type > 0
         """
 
+    def table_hint(self) -> str:
+        return "WITH (NOLOCK)"
+
     def type_family(self, raw_type_code, sample):
         from src.web.db import _guess_type, _is_integer_sql_type, _is_text_sql_type
 

@@ -235,6 +235,79 @@
               </button>
               <div id="rp-section-settings" class="rp-accordion-body">
                 <div class="settings-form">
+                  <div class="form-row full-width-row">
+                    <label class="color-scheme-label"><span data-i18n="color_scheme_label">Barevné schéma</span>
+                      <div class="custom-select color-scheme-select" id="color-scheme-select">
+                        <button type="button" class="custom-select-trigger" id="color-scheme-trigger" aria-haspopup="listbox" aria-expanded="false">
+                          <span class="selected-text" data-i18n-placeholder="color_scheme_default">Výchozí</span>
+                          <span class="selected-palette"></span>
+                          <span class="rp-chevron">&#10095;</span>
+                        </button>
+                        <div class="custom-select-options hidden" id="color-scheme-options" role="listbox"></div>
+                      </div>
+                      <select id="setting-color-scheme" class="hidden">
+                        <option value="default" data-i18n="color_scheme_default">Výchozí</option>
+                        <option value="warm" data-i18n="color_scheme_warm">Teplé</option>
+                        <option value="cool" data-i18n="color_scheme_cool">Studené</option>
+                        <option value="pastel" data-i18n="color_scheme_pastel">Pastel</option>
+                        <option value="pastel_sunset" data-i18n="color_scheme_pastel_sunset">Pastel sunset</option>
+                        <option value="pastel_candy" data-i18n="color_scheme_pastel_candy">Pastel candy</option>
+                        <option value="pastel_forest" data-i18n="color_scheme_pastel_forest">Pastel forest</option>
+                        <option value="pastel_lavender" data-i18n="color_scheme_pastel_lavender">Pastel lavender</option>
+                        <option value="pastel_ocean" data-i18n="color_scheme_pastel_ocean">Pastel ocean</option>
+                        <option value="pastel_roses" data-i18n="color_scheme_pastel_roses">Pastel roses</option>
+                        <option value="pastel_berry" data-i18n="color_scheme_pastel_berry">Pastel berry</option>
+                        <option value="pastel_mint" data-i18n="color_scheme_pastel_mint">Pastel mint</option>
+                        <option value="neon" data-i18n="color_scheme_neon">Neon</option>
+                        <option value="earth" data-i18n="color_scheme_earth">Earth</option>
+                        <option value="ocean" data-i18n="color_scheme_ocean">Ocean</option>
+                        <option value="forest" data-i18n="color_scheme_forest">Forest</option>
+                        <option value="autumn" data-i18n="color_scheme_autumn">Autumn</option>
+                        <option value="winter" data-i18n="color_scheme_winter">Winter</option>
+                        <option value="spring" data-i18n="color_scheme_spring">Spring</option>
+                        <option value="summer" data-i18n="color_scheme_summer">Summer</option>
+                        <option value="berry" data-i18n="color_scheme_berry">Berry</option>
+                        <option value="grayscale" data-i18n="color_scheme_grayscale">Grayscale</option>
+                        <option value="retro" data-i18n="color_scheme_retro">Retro</option>
+                        <option value="midnight" data-i18n="color_scheme_midnight">Midnight</option>
+                        <option value="coral" data-i18n="color_scheme_coral">Coral</option>
+                        <option value="tropical" data-i18n="color_scheme_tropical">Tropical</option>
+                        <option value="citrus" data-i18n="color_scheme_citrus">Citrus</option>
+                        <option value="jewel" data-i18n="color_scheme_jewel">Jewel</option>
+                        <option value="sunset" data-i18n="color_scheme_sunset">Sunset</option>
+                        <option value="meadow" data-i18n="color_scheme_meadow">Meadow</option>
+                        <option value="royal" data-i18n="color_scheme_royal">Royal</option>
+                        <option value="coffee" data-i18n="color_scheme_coffee">Coffee</option>
+                        <option value="nordic" data-i18n="color_scheme_nordic">Nordic</option>
+                        <option value="cyberpunk" data-i18n="color_scheme_cyberpunk">Cyberpunk</option>
+                      </select>
+                    </label>
+                  </div>
+                  <div class="form-row full-width-row">
+                    <label class="theme-label"><span data-i18n="table_theme_label">Vzhled tabulky</span>
+                      <div class="custom-select table-theme-select" id="table-theme-select">
+                        <button type="button" class="custom-select-trigger" id="table-theme-trigger" aria-haspopup="listbox" aria-expanded="false">
+                          <span class="selected-text" data-i18n-placeholder="table_theme_default">Výchozí</span>
+                          <span class="selected-swatch"></span>
+                          <span class="rp-chevron">&#10095;</span>
+                        </button>
+                        <div class="custom-select-options hidden" id="table-theme-options" role="listbox"></div>
+                      </div>
+                      <select id="setting-table-theme" class="hidden">
+                        <option value="default" data-i18n="table_theme_default">Výchozí</option>
+                        <option value="navy" data-i18n="table_theme_navy">Tmavě modrá</option>
+                        <option value="olive" data-i18n="table_theme_olive">Olivově zelená</option>
+                        <option value="auburn" data-i18n="table_theme_auburn">Kaštanově hnědá</option>
+                        <option value="plum" data-i18n="table_theme_plum">Švestkově fialová</option>
+                        <option value="charcoal" data-i18n="table_theme_charcoal">Tmavě šedá</option>
+                        <option value="accent_navy" data-i18n="table_theme_accent_navy">Modré záhlaví a sloupec</option>
+                        <option value="accent_olive" data-i18n="table_theme_accent_olive">Olivové záhlaví a sloupec</option>
+                        <option value="accent_auburn" data-i18n="table_theme_accent_auburn">Hnědé záhlaví a sloupec</option>
+                        <option value="accent_plum" data-i18n="table_theme_accent_plum">Fialové záhlaví a sloupec</option>
+                        <option value="accent_charcoal" data-i18n="table_theme_accent_charcoal">Šedé záhlaví a sloupec</option>
+                      </select>
+                    </label>
+                  </div>
                   <div class="form-row">
                     <label><span data-i18n="number_format_label">Formát čísel</span>
                       <select id="setting-number-format">
@@ -256,19 +329,9 @@
                     </label>
                   </div>
                   <div class="form-row">
-                    <label><span data-i18n="color_scheme_label">Barevné schéma</span>
-                      <select id="setting-color-scheme">
-                        <option value="default" data-i18n="color_scheme_default">Výchozí</option>
-                        <option value="warm" data-i18n="color_scheme_warm">Teplé</option>
-                        <option value="cool" data-i18n="color_scheme_cool">Studené</option>
-                        <option value="pastel" data-i18n="color_scheme_pastel">Pastel</option>
-                      </select>
-                    </label>
                     <label><span data-i18n="row_limit_label">Limit řádků</span>
                       <input type="number" id="setting-row-limit" value="1000" min="0" step="100" data-i18n-placeholder="row_limit_placeholder" placeholder="0 = neomezeně">
                     </label>
-                  </div>
-                  <div class="form-row">
                     <label><span data-i18n="charts_per_row_label">Grafů na řádek</span>
                       <select id="setting-charts-per-row">
                         <option value="1">1</option>
@@ -277,6 +340,8 @@
                         <option value="4">4</option>
                       </select>
                     </label>
+                  </div>
+                  <div class="form-row">
                     <label><span data-i18n="chart_height_label">Výška karty (px)</span>
                       <input type="number" id="setting-chart-height" value="360" min="200" max="800" step="20">
                     </label>

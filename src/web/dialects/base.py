@@ -100,6 +100,15 @@ class SourceDialect:
         """
         return ""
 
+    def table_hint(self) -> str:
+        """Return an optional table-level hint appended after a table source.
+
+        For example SQL Server can return ``WITH (NOLOCK)`` to avoid locking
+        source tables during analytical queries.  Dialects that do not use
+        table hints return an empty string.
+        """
+        return ""
+
     # ------------------------------------------------------------------
     # Type mapping / display
     # ------------------------------------------------------------------

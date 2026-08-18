@@ -70,14 +70,314 @@
       'rgba(45, 212, 191, 0.7)',
     ],
     pastel: [
-      'rgba(251, 113, 133, 0.7)',
-      'rgba(244, 114, 182, 0.7)',
-      'rgba(192, 132, 252, 0.7)',
-      'rgba(129, 140, 248, 0.7)',
-      'rgba(96, 165, 250, 0.7)',
-      'rgba(103, 232, 249, 0.7)',
-      'rgba(167, 243, 208, 0.7)',
-      'rgba(253, 224, 71, 0.7)',
+      'rgba(244, 63, 94, 0.7)',
+      'rgba(219, 39, 119, 0.7)',
+      'rgba(168, 85, 247, 0.7)',
+      'rgba(99, 102, 241, 0.7)',
+      'rgba(59, 130, 246, 0.7)',
+      'rgba(6, 182, 212, 0.7)',
+      'rgba(16, 185, 129, 0.7)',
+      'rgba(234, 179, 8, 0.7)',
+    ],
+    pastel_sunset: [
+      'rgba(255, 99, 112, 0.7)',
+      'rgba(255, 184, 89, 0.7)',
+      'rgba(247, 162, 140, 0.7)',
+      'rgba(255, 107, 69, 0.7)',
+      'rgba(255, 149, 66, 0.7)',
+      'rgba(255, 184, 77, 0.7)',
+      'rgba(255, 130, 122, 0.7)',
+      'rgba(255, 171, 145, 0.7)',
+    ],
+    pastel_candy: [
+      'rgba(252, 165, 165, 0.7)',
+      'rgba(233, 213, 232, 0.7)',
+      'rgba(196, 126, 209, 0.7)',
+      'rgba(140, 153, 211, 0.7)',
+      'rgba(125, 184, 244, 0.7)',
+      'rgba(109, 215, 228, 0.7)',
+      'rgba(157, 223, 230, 0.7)',
+      'rgba(183, 213, 147, 0.7)',
+    ],
+    pastel_forest: [
+      'rgba(192, 222, 161, 0.7)',
+      'rgba(134, 197, 137, 0.7)',
+      'rgba(95, 179, 99, 0.7)',
+      'rgba(96, 191, 235, 0.7)',
+      'rgba(236, 107, 152, 0.7)',
+      'rgba(255, 172, 144, 0.7)',
+      'rgba(207, 160, 216, 0.7)',
+      'rgba(240, 225, 113, 0.7)',
+    ],
+    pastel_lavender: [
+      'rgba(209, 196, 233, 0.7)',
+      'rgba(193, 148, 203, 0.7)',
+      'rgba(170, 108, 185, 0.7)',
+      'rgba(146, 96, 230, 0.7)',
+      'rgba(132, 147, 203, 0.7)',
+      'rgba(174, 196, 231, 0.7)',
+      'rgba(245, 165, 172, 0.7)',
+      'rgba(186, 225, 247, 0.7)',
+    ],
+    pastel_ocean: [
+      'rgba(188, 232, 241, 0.7)',
+      'rgba(139, 221, 230, 0.7)',
+      'rgba(96, 207, 220, 0.7)',
+      'rgba(45, 188, 207, 0.7)',
+      'rgba(119, 183, 246, 0.7)',
+      'rgba(161, 202, 244, 0.7)',
+      'rgba(173, 213, 138, 0.7)',
+      'rgba(255, 220, 143, 0.7)',
+    ],
+    pastel_roses: [
+      'rgba(255, 212, 230, 0.7)',
+      'rgba(250, 172, 183, 0.7)',
+      'rgba(243, 141, 181, 0.7)',
+      'rgba(233, 102, 150, 0.7)',
+      'rgba(255, 153, 148, 0.7)',
+      'rgba(255, 196, 144, 0.7)',
+      'rgba(252, 240, 153, 0.7)',
+      'rgba(189, 120, 198, 0.7)',
+    ],
+    pastel_berry: [
+      'rgba(255, 138, 101, 0.7)',
+      'rgba(255, 107, 69, 0.7)',
+      'rgba(255, 87, 34, 0.7)',
+      'rgba(225, 29, 72, 0.7)',
+      'rgba(219, 39, 119, 0.7)',
+      'rgba(168, 85, 247, 0.7)',
+      'rgba(99, 102, 241, 0.7)',
+      'rgba(234, 179, 8, 0.7)',
+    ],
+    pastel_mint: [
+      'rgba(164, 217, 166, 0.7)',
+      'rgba(139, 221, 230, 0.7)',
+      'rgba(125, 197, 128, 0.7)',
+      'rgba(89, 179, 93, 0.7)',
+      'rgba(240, 225, 113, 0.7)',
+      'rgba(255, 220, 143, 0.7)',
+      'rgba(255, 196, 144, 0.7)',
+      'rgba(243, 141, 181, 0.7)',
+    ],
+    neon: [
+      'rgba(57, 255, 20, 0.7)',
+      'rgba(255, 16, 240, 0.7)',
+      'rgba(0, 255, 255, 0.7)',
+      'rgba(255, 255, 0, 0.7)',
+      'rgba(255, 0, 128, 0.7)',
+      'rgba(0, 128, 255, 0.7)',
+      'rgba(191, 255, 0, 0.7)',
+      'rgba(255, 102, 0, 0.7)',
+    ],
+    earth: [
+      'rgba(139, 94, 60, 0.7)',
+      'rgba(160, 124, 90, 0.7)',
+      'rgba(107, 142, 35, 0.7)',
+      'rgba(85, 107, 47, 0.7)',
+      'rgba(210, 180, 140, 0.7)',
+      'rgba(205, 133, 63, 0.7)',
+      'rgba(244, 164, 96, 0.7)',
+      'rgba(34, 139, 34, 0.7)',
+    ],
+    ocean: [
+      'rgba(0, 105, 148, 0.7)',
+      'rgba(0, 149, 182, 0.7)',
+      'rgba(0, 191, 255, 0.7)',
+      'rgba(70, 130, 180, 0.7)',
+      'rgba(95, 158, 160, 0.7)',
+      'rgba(100, 149, 237, 0.7)',
+      'rgba(0, 128, 128, 0.7)',
+      'rgba(72, 61, 139, 0.7)',
+    ],
+    forest: [
+      'rgba(34, 139, 34, 0.7)',
+      'rgba(85, 107, 47, 0.7)',
+      'rgba(107, 142, 35, 0.7)',
+      'rgba(154, 205, 50, 0.7)',
+      'rgba(124, 252, 0, 0.7)',
+      'rgba(173, 255, 47, 0.7)',
+      'rgba(0, 128, 0, 0.7)',
+      'rgba(60, 179, 113, 0.7)',
+    ],
+    autumn: [
+      'rgba(153, 0, 0, 0.7)',
+      'rgba(204, 85, 0, 0.7)',
+      'rgba(187, 120, 35, 0.7)',
+      'rgba(215, 125, 0, 0.7)',
+      'rgba(231, 180, 22, 0.7)',
+      'rgba(139, 69, 19, 0.7)',
+      'rgba(210, 105, 30, 0.7)',
+      'rgba(244, 164, 96, 0.7)',
+    ],
+    winter: [
+      'rgba(176, 196, 222, 0.7)',
+      'rgba(70, 130, 180, 0.7)',
+      'rgba(123, 104, 238, 0.7)',
+      'rgba(0, 191, 255, 0.7)',
+      'rgba(119, 136, 153, 0.7)',
+      'rgba(72, 61, 139, 0.7)',
+      'rgba(47, 79, 79, 0.7)',
+      'rgba(176, 224, 230, 0.7)',
+    ],
+    spring: [
+      'rgba(255, 183, 178, 0.7)',
+      'rgba(255, 218, 193, 0.7)',
+      'rgba(226, 240, 203, 0.7)',
+      'rgba(181, 234, 215, 0.7)',
+      'rgba(199, 206, 234, 0.7)',
+      'rgba(255, 205, 210, 0.7)',
+      'rgba(215, 204, 200, 0.7)',
+      'rgba(255, 245, 157, 0.7)',
+    ],
+    summer: [
+      'rgba(255, 236, 139, 0.7)',
+      'rgba(255, 111, 97, 0.7)',
+      'rgba(255, 204, 92, 0.7)',
+      'rgba(79, 195, 247, 0.7)',
+      'rgba(255, 171, 64, 0.7)',
+      'rgba(238, 130, 238, 0.7)',
+      'rgba(50, 205, 50, 0.7)',
+      'rgba(255, 69, 0, 0.7)',
+    ],
+    berry: [
+      'rgba(128, 0, 128, 0.7)',
+      'rgba(186, 85, 211, 0.7)',
+      'rgba(221, 160, 221, 0.7)',
+      'rgba(199, 21, 133, 0.7)',
+      'rgba(255, 20, 147, 0.7)',
+      'rgba(218, 112, 214, 0.7)',
+      'rgba(75, 0, 130, 0.7)',
+      'rgba(147, 112, 219, 0.7)',
+    ],
+    grayscale: [
+      'rgba(31, 41, 55, 0.7)',
+      'rgba(75, 85, 99, 0.7)',
+      'rgba(107, 114, 128, 0.7)',
+      'rgba(156, 163, 175, 0.7)',
+      'rgba(209, 213, 219, 0.7)',
+      'rgba(55, 65, 81, 0.7)',
+      'rgba(99, 102, 241, 0.7)',
+      'rgba(17, 24, 39, 0.7)',
+    ],
+    retro: [
+      'rgba(204, 119, 34, 0.7)',
+      'rgba(17, 138, 178, 0.7)',
+      'rgba(255, 209, 102, 0.7)',
+      'rgba(6, 214, 160, 0.7)',
+      'rgba(239, 71, 111, 0.7)',
+      'rgba(17, 138, 178, 0.7)',
+      'rgba(255, 140, 66, 0.7)',
+      'rgba(131, 56, 236, 0.7)',
+    ],
+    midnight: [
+      'rgba(25, 25, 112, 0.7)',
+      'rgba(72, 61, 139, 0.7)',
+      'rgba(106, 90, 205, 0.7)',
+      'rgba(123, 104, 238, 0.7)',
+      'rgba(0, 0, 139, 0.7)',
+      'rgba(65, 105, 225, 0.7)',
+      'rgba(100, 149, 237, 0.7)',
+      'rgba(70, 130, 180, 0.7)',
+    ],
+    coral: [
+      'rgba(255, 127, 80, 0.7)',
+      'rgba(255, 99, 71, 0.7)',
+      'rgba(240, 128, 128, 0.7)',
+      'rgba(205, 92, 92, 0.7)',
+      'rgba(233, 150, 122, 0.7)',
+      'rgba(250, 128, 114, 0.7)',
+      'rgba(255, 160, 122, 0.7)',
+      'rgba(255, 69, 0, 0.7)',
+    ],
+    tropical: [
+      'rgba(255, 105, 180, 0.7)',
+      'rgba(255, 20, 147, 0.7)',
+      'rgba(0, 206, 209, 0.7)',
+      'rgba(255, 165, 0, 0.7)',
+      'rgba(50, 205, 50, 0.7)',
+      'rgba(255, 215, 0, 0.7)',
+      'rgba(30, 144, 255, 0.7)',
+      'rgba(221, 160, 221, 0.7)',
+    ],
+    citrus: [
+      'rgba(255, 204, 0, 0.7)',
+      'rgba(255, 165, 0, 0.7)',
+      'rgba(255, 95, 31, 0.7)',
+      'rgba(173, 255, 47, 0.7)',
+      'rgba(154, 205, 50, 0.7)',
+      'rgba(255, 255, 0, 0.7)',
+      'rgba(218, 165, 32, 0.7)',
+      'rgba(255, 140, 0, 0.7)',
+    ],
+    jewel: [
+      'rgba(15, 82, 186, 0.7)',
+      'rgba(0, 128, 128, 0.7)',
+      'rgba(128, 0, 128, 0.7)',
+      'rgba(220, 20, 60, 0.7)',
+      'rgba(255, 140, 0, 0.7)',
+      'rgba(75, 0, 130, 0.7)',
+      'rgba(0, 100, 0, 0.7)',
+      'rgba(184, 134, 11, 0.7)',
+    ],
+    sunset: [
+      'rgba(132, 0, 50, 0.7)',
+      'rgba(220, 20, 60, 0.7)',
+      'rgba(255, 69, 0, 0.7)',
+      'rgba(255, 140, 0, 0.7)',
+      'rgba(255, 215, 0, 0.7)',
+      'rgba(255, 105, 180, 0.7)',
+      'rgba(128, 0, 128, 0.7)',
+      'rgba(75, 0, 130, 0.7)',
+    ],
+    meadow: [
+      'rgba(107, 142, 35, 0.7)',
+      'rgba(154, 205, 50, 0.7)',
+      'rgba(34, 139, 34, 0.7)',
+      'rgba(124, 252, 0, 0.7)',
+      'rgba(173, 255, 47, 0.7)',
+      'rgba(0, 128, 0, 0.7)',
+      'rgba(60, 179, 113, 0.7)',
+      'rgba(85, 107, 47, 0.7)',
+    ],
+    royal: [
+      'rgba(65, 105, 225, 0.7)',
+      'rgba(75, 0, 130, 0.7)',
+      'rgba(138, 43, 226, 0.7)',
+      'rgba(147, 112, 219, 0.7)',
+      'rgba(106, 90, 205, 0.7)',
+      'rgba(123, 104, 238, 0.7)',
+      'rgba(0, 0, 139, 0.7)',
+      'rgba(72, 61, 139, 0.7)',
+    ],
+    coffee: [
+      'rgba(111, 78, 55, 0.7)',
+      'rgba(141, 110, 99, 0.7)',
+      'rgba(169, 133, 99, 0.7)',
+      'rgba(205, 133, 63, 0.7)',
+      'rgba(210, 180, 140, 0.7)',
+      'rgba(139, 69, 19, 0.7)',
+      'rgba(160, 82, 45, 0.7)',
+      'rgba(128, 70, 27, 0.7)',
+    ],
+    nordic: [
+      'rgba(94, 129, 172, 0.7)',
+      'rgba(129, 161, 193, 0.7)',
+      'rgba(176, 190, 201, 0.7)',
+      'rgba(143, 188, 187, 0.7)',
+      'rgba(136, 192, 208, 0.7)',
+      'rgba(163, 190, 140, 0.7)',
+      'rgba(180, 142, 173, 0.7)',
+      'rgba(208, 135, 112, 0.7)',
+    ],
+    cyberpunk: [
+      'rgba(255, 0, 255, 0.7)',
+      'rgba(0, 255, 255, 0.7)',
+      'rgba(255, 255, 0, 0.7)',
+      'rgba(255, 0, 128, 0.7)',
+      'rgba(57, 255, 20, 0.7)',
+      'rgba(191, 0, 255, 0.7)',
+      'rgba(0, 191, 255, 0.7)',
+      'rgba(255, 69, 0, 0.7)',
     ],
   };
 
@@ -389,10 +689,8 @@
       state.currentDashboard.date_time_format = el.value;
       refreshData();
     });
-    bindSetting('setting-color-scheme', 'change', (el) => {
-      state.currentDashboard.color_scheme = el.value;
-      renderCharts();
-    });
+    bindColorSchemeSelect();
+    bindTableThemeSelect();
     bindSetting('setting-row-limit', 'change', (el) => {
       const v = parseInt(el.value, 10);
       state.currentDashboard.row_limit = Number.isNaN(v) ? 1000 : Math.max(0, v);
@@ -430,6 +728,178 @@
     const el = $('#' + id);
     if (!el) return;
     el.addEventListener(event, () => handler(el));
+  }
+
+  function bindColorSchemeSelect() {
+    const hidden = $('#setting-color-scheme');
+    const container = $('#color-scheme-select');
+    const trigger = $('#color-scheme-trigger');
+    const optionsEl = $('#color-scheme-options');
+    if (!hidden || !container || !trigger || !optionsEl) return;
+
+    function renderOptions() {
+      optionsEl.innerHTML = '';
+      hidden.querySelectorAll('option').forEach(opt => {
+        const value = opt.value;
+        const label = t(opt.dataset.i18n) || opt.textContent;
+        const scheme = COLOR_SCHEMES[value] || DEFAULT_COLORS;
+        const option = document.createElement('div');
+        option.className = 'custom-select-option' + (value === hidden.value ? ' selected' : '');
+        option.dataset.value = value;
+        option.setAttribute('role', 'option');
+        option.setAttribute('aria-selected', String(value === hidden.value));
+        const palette = scheme.slice(0, 6).map(c => `<span class="palette-swatch" style="background:${esc(c)}"></span>`).join('');
+        option.innerHTML = `<span class="palette-swatch-list">${palette}</span><span class="option-label">${esc(label)}</span>`;
+        option.addEventListener('click', (e) => {
+          e.stopPropagation();
+          hidden.value = value;
+          state.currentDashboard.color_scheme = value;
+          updateTrigger();
+          optionsEl.classList.remove('open');
+          trigger.setAttribute('aria-expanded', 'false');
+          container.classList.remove('open');
+          renderCharts();
+        });
+        optionsEl.appendChild(option);
+      });
+    }
+
+    function updateTrigger() {
+      const selected = hidden.querySelector(`option[value="${CSS.escape(hidden.value)}"]`) || hidden.options[0];
+      const label = t(selected.dataset.i18n) || selected.textContent;
+      const scheme = COLOR_SCHEMES[hidden.value] || DEFAULT_COLORS;
+      const palette = scheme.slice(0, 6).map(c => `<span class="palette-swatch" style="background:${esc(c)}"></span>`).join('');
+      trigger.querySelector('.selected-text').textContent = label;
+      trigger.querySelector('.selected-palette').innerHTML = palette;
+      optionsEl.querySelectorAll('.custom-select-option').forEach(opt => {
+        const active = opt.dataset.value === hidden.value;
+        opt.classList.toggle('selected', active);
+        opt.setAttribute('aria-selected', String(active));
+      });
+    }
+
+    trigger.addEventListener('click', (e) => {
+      e.stopPropagation();
+      renderOptions();
+      const isOpen = optionsEl.classList.toggle('open');
+      trigger.setAttribute('aria-expanded', String(isOpen));
+      container.classList.toggle('open', isOpen);
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!container.contains(e.target)) {
+        optionsEl.classList.remove('open');
+        trigger.setAttribute('aria-expanded', 'false');
+        container.classList.remove('open');
+      }
+    });
+
+    hidden.addEventListener('change', () => {
+      updateTrigger();
+    });
+
+    updateTrigger();
+  }
+
+  function syncColorSchemeAndRender() {
+    const hidden = $('#setting-color-scheme');
+    if (hidden) {
+      hidden.value = state.currentDashboard.color_scheme || 'default';
+      hidden.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    renderCharts();
+  }
+
+  function bindTableThemeSelect() {
+    const hidden = $('#setting-table-theme');
+    const container = $('#table-theme-select');
+    const trigger = $('#table-theme-trigger');
+    const optionsEl = $('#table-theme-options');
+    if (!hidden || !container || !trigger || !optionsEl) return;
+
+    const swatches = {
+      default: '#f3f4f6',
+      navy: '#1e3a5f',
+      olive: '#4a5d23',
+      auburn: '#6e2c1e',
+      plum: '#4a1e3b',
+      charcoal: '#2d3748',
+      accent_navy: '#1e3a5f',
+      accent_olive: '#4a5d23',
+      accent_auburn: '#6e2c1e',
+      accent_plum: '#4a1e3b',
+      accent_charcoal: '#2d3748',
+    };
+
+    function renderOptions() {
+      optionsEl.innerHTML = '';
+      hidden.querySelectorAll('option').forEach(opt => {
+        const value = opt.value;
+        const label = t(opt.dataset.i18n) || opt.textContent;
+        const option = document.createElement('div');
+        option.className = 'custom-select-option' + (value === hidden.value ? ' selected' : '');
+        option.dataset.value = value;
+        option.setAttribute('role', 'option');
+        option.setAttribute('aria-selected', String(value === hidden.value));
+        const swatch = `<span class="theme-swatch" style="background:${esc(swatches[value] || '#f3f4f6')}"></span>`;
+        option.innerHTML = `${swatch}<span class="option-label">${esc(label)}</span>`;
+        option.addEventListener('click', (e) => {
+          e.stopPropagation();
+          hidden.value = value;
+          state.currentDashboard.table_theme = value;
+          updateTrigger();
+          optionsEl.classList.remove('open');
+          trigger.setAttribute('aria-expanded', 'false');
+          container.classList.remove('open');
+          applyTableTheme();
+        });
+        optionsEl.appendChild(option);
+      });
+    }
+
+    function updateTrigger() {
+      const selected = hidden.querySelector(`option[value="${CSS.escape(hidden.value)}"]`) || hidden.options[0];
+      const label = t(selected.dataset.i18n) || selected.textContent;
+      trigger.querySelector('.selected-text').textContent = label;
+      trigger.querySelector('.selected-swatch').style.background = swatches[hidden.value] || '#f3f4f6';
+      optionsEl.querySelectorAll('.custom-select-option').forEach(opt => {
+        const active = opt.dataset.value === hidden.value;
+        opt.classList.toggle('selected', active);
+        opt.setAttribute('aria-selected', String(active));
+      });
+    }
+
+    trigger.addEventListener('click', (e) => {
+      e.stopPropagation();
+      renderOptions();
+      const isOpen = optionsEl.classList.toggle('open');
+      trigger.setAttribute('aria-expanded', String(isOpen));
+      container.classList.toggle('open', isOpen);
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!container.contains(e.target)) {
+        optionsEl.classList.remove('open');
+        trigger.setAttribute('aria-expanded', 'false');
+        container.classList.remove('open');
+      }
+    });
+
+    hidden.addEventListener('change', () => {
+      updateTrigger();
+      applyTableTheme();
+    });
+
+    updateTrigger();
+  }
+
+  function applyTableTheme() {
+    const dash = state.currentDashboard;
+    const theme = dash ? (dash.table_theme || 'default') : 'default';
+    const table = $('#data-table');
+    if (!table) return;
+    table.classList.remove('theme-default', 'theme-gray', 'theme-dark', 'theme-navy', 'theme-olive', 'theme-auburn', 'theme-plum', 'theme-charcoal', 'theme-accent-navy', 'theme-accent-olive', 'theme-accent-auburn', 'theme-accent-plum', 'theme-accent-charcoal');
+    table.classList.add(`theme-${theme.replace(/_/g, '-')}`);
   }
 
   // ------------------------------------------------------------------
@@ -1769,6 +2239,7 @@
     dash.number_format = valueOr('#setting-number-format', dash.number_format || '#,##0.00');
     dash.date_time_format = valueOr('#setting-date-time-format', dash.date_time_format || 'dd.MM.yyyy HH:mm');
     dash.color_scheme = valueOr('#setting-color-scheme', dash.color_scheme || 'default');
+    dash.table_theme = valueOr('#setting-table-theme', dash.table_theme || 'default');
     const rowLimitVal = parseInt(valueOr('#setting-row-limit', String(dash.row_limit !== null && dash.row_limit !== undefined ? dash.row_limit : 1000)), 10);
     dash.row_limit = Number.isNaN(rowLimitVal) ? 1000 : Math.max(0, rowLimitVal);
     dash.charts_per_row = parseInt(valueOr('#setting-charts-per-row', '3')) || 3;
@@ -2020,6 +2491,12 @@
     setValue('#setting-number-format', dash.number_format || '#,##0.00');
     setValue('#setting-date-time-format', dash.date_time_format || 'dd.MM.yyyy HH:mm');
     setValue('#setting-color-scheme', dash.color_scheme || 'default');
+    const hiddenScheme = $('#setting-color-scheme');
+    if (hiddenScheme) hiddenScheme.dispatchEvent(new Event('change', { bubbles: true }));
+    setValue('#setting-table-theme', dash.table_theme || 'default');
+    const hiddenTheme = $('#setting-table-theme');
+    if (hiddenTheme) hiddenTheme.dispatchEvent(new Event('change', { bubbles: true }));
+    applyTableTheme();
     setValue('#setting-row-limit', String(dash.row_limit !== null && dash.row_limit !== undefined ? dash.row_limit : 1000));
     setValue('#setting-charts-per-row', String(dash.charts_per_row || 3));
     setValue('#setting-chart-height', String(dash.chart_card_height || 360));

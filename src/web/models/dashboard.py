@@ -85,6 +85,7 @@ class Dashboard(BaseModel):
     number_format: str = "#,##0.00"
     date_time_format: str = "dd.MM.yyyy HH:mm"
     color_scheme: str = "default"
+    table_theme: str = "default"
     charts_per_row: int = 3
     chart_card_height: int = 360
     show_grid: bool = True

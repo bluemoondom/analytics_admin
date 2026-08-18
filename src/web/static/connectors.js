@@ -235,11 +235,14 @@
           const saved = id
             ? await api('PUT', `/${id}`, data)
             : await api('POST', '/', data);
+          await api('POST', `/${saved.id}/activate`);
+          state.currentConnectorId = saved.id;
           await loadConnectors();
           // Keep the saved connector in the form instead of resetting it.
           const updated = state.connectors.find((c) => c.id === saved.id) || saved;
           setFormData(updated);
-          showTestResult(t('connector_save_ok', {}) || 'Konektor byl uložen.', 'success');
+          renderConnectorList();
+          window.location.reload();
         } catch (err) {
           alert(t('connector_save_error', { error: err.message }) || err.message);
         }
