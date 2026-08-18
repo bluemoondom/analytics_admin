@@ -148,4 +148,6 @@ python -m src.web.server
 
 ![Connector management](screen5.jpg)
 
+![Charts and table themes](screen6.jpg)
+
 ---
