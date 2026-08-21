@@ -229,6 +229,21 @@ class ViewModelingService:
             raise ViewModelingError("Definice vlastního sloupce nesmí být prázdná.")
         cls._validate_custom_column_definition(definition)
 
+    def _validate_and_quote_custom_column_expression(
+        self, definition: str, alias: str
+    ) -> str:
+        """Return the validated custom column definition wrapped in parentheses.
+
+        Used when the custom column is referenced in a WHERE/ON condition so MSSQL
+        sees a valid expression instead of a bare alias.
+        """
+        if not definition:
+            raise ViewModelingError(
+                f"Vlastní sloupec {alias} nemá definici."
+            )
+        self._validate_custom_column_definition(definition)
+        return f"({definition})"
+
     @staticmethod
     def _validate_custom_column_definition(definition: str) -> None:
         """Validate a user-provided custom column expression.
@@ -349,6 +364,11 @@ class ViewModelingService:
         """Build a SELECT statement from the modeling payload."""
         primary = (payload.get("primary_table") or "").strip()
         selected_columns = payload.get("selected_columns") or []
+        if not primary:
+            raise ViewModelingError("Vyberte primární tabulku.")
+        if not selected_columns:
+            raise ViewModelingError("Vyberte alespoň jeden sloupec.")
+
         joins = payload.get("joins") or []
         subviews = self._normalize_subviews(payload)
         group_by = payload.get("group_by") or []
@@ -361,11 +381,6 @@ class ViewModelingService:
                 and self._tab_obecny_prehled_exists()
             )
         )
-
-        if not primary:
-            raise ViewModelingError("Vyberte primární tabulku.")
-        if not selected_columns:
-            raise ViewModelingError("Vyberte alespoň jeden sloupec.")
 
         custom_columns = payload.get("custom_columns") or []
 
@@ -434,22 +449,88 @@ class ViewModelingService:
 
         available: dict[str, list[str]] = {primary: _table_columns(primary)}
 
+        # Register custom columns under a synthetic table name so they can be used
+        # in WHERE conditions. The expression is used as the column source.
+        CUSTOM_COLUMNS_TABLE = "[custom_columns]"
+        custom_columns_by_alias: dict[str, str] = {}
+        for cc in custom_columns:
+            alias = (cc.get("alias") or "").strip()
+            definition = (cc.get("definition") or "").strip()
+            if alias and definition:
+                custom_columns_by_alias[alias] = definition
+        if custom_columns_by_alias:
+            available[CUSTOM_COLUMNS_TABLE] = list(custom_columns_by_alias.keys())
+            column_cache[CUSTOM_COLUMNS_TABLE] = [
+                {"name": alias, "type": "text"} for alias in custom_columns_by_alias
+            ]
+            for alias in custom_columns_by_alias:
+                column_info[(CUSTOM_COLUMNS_TABLE, alias)] = {"name": alias, "type": "text"}
+
         # First pass: collect all tables that are actually used in joins so we can
         # safely prefix every column when there is more than one table in play.
+        # A join's left side must be a table already present in the query; if the
+        # payload has them reversed (common when reusing an existing table as the
+        # join target), swap them so the SQL is valid.
         joined_tables: list[tuple[str, str, str, list[dict[str, Any]]]] = []
+        joined_so_far: set[str] = {primary}
         for join in joins:
-            right = (join.get("right_table") or "").strip()
-            left = (join.get("left_table") or primary).strip()
             join_type = (join.get("join_type") or "LEFT").strip().upper()
             if join_type not in {"INNER", "LEFT", "RIGHT", "FULL"}:
                 join_type = "LEFT"
+            # Start from explicit join endpoints when provided; the first condition
+            # will be used to resolve the actual orientation if it differs.
+            explicit_left = (join.get("left_table") or "").strip()
+            explicit_right = (join.get("right_table") or "").strip()
+            left = explicit_left or primary
+            right = explicit_right
             conditions = self._normalize_join_conditions(join, left, right)
-            if not right or not conditions:
+            if not conditions:
                 continue
+
+            # The first condition determines which table should be joined (the new
+            # table that is not yet part of the query). The new table becomes the
+            # right side of the JOIN; the side that is already known stays on the
+            # left. If both sides are already known the user payload is left as-is.
+            first = conditions[0]
+            cond_left = (first.get("left_table") or "").strip()
+            cond_right = (first.get("right_table") or "").strip()
+            left_is_new = cond_left and cond_left not in joined_so_far
+            right_is_new = cond_right and cond_right not in joined_so_far
+
+            if left_is_new and not right_is_new:
+                # First table in the condition is the table to join.
+                new_right = cond_left
+                new_left = cond_right or explicit_left or primary
+                for cond in conditions:
+                    old_left_tbl = (cond.get("left_table") or "").strip()
+                    old_right_tbl = (cond.get("right_table") or "").strip()
+                    old_left_col = (cond.get("left_column") or "").strip()
+                    old_right_col = (cond.get("right_column") or "").strip()
+                    # Swap column-only conditions. Conditions that compare a
+                    # column to a literal value are kept unchanged so the column
+                    # stays tied to its original table.
+                    if old_left_col and old_right_col:
+                        cond["left_table"] = old_right_tbl
+                        cond["right_table"] = old_left_tbl
+                        cond["left_column"] = old_right_col
+                        cond["right_column"] = old_left_col
+                left, right = new_left, new_right
+            elif right_is_new and not left_is_new:
+                # Second table in the condition is the table to join.
+                left, right = cond_left, cond_right
+            elif right:
+                # No clear orientation from the first condition: keep explicit payload.
+                pass
+            else:
+                # No explicit right table and no new table detected: skip join.
+                continue
+
             for tbl in {left, right}:
                 if tbl and tbl not in available:
                     available[tbl] = _table_columns(tbl)
                     _load_columns_info(tbl)
+            joined_so_far.add(left)
+            joined_so_far.add(right)
             joined_tables.append((left, right, join_type, conditions))
 
         has_joins = bool(joined_tables) or bool(subviews)
@@ -561,7 +642,11 @@ class ViewModelingService:
                 )
 
         where_sql = self._build_where_sql(
-            payload.get("where_clauses") or [], available, _column_type, base_table=_base_table
+            payload.get("where_clauses") or [],
+            available,
+            _column_type,
+            base_table=_base_table,
+            custom_columns_by_alias=custom_columns_by_alias,
         )
         if where_sql:
             sql += "\n" + where_sql
@@ -616,12 +701,18 @@ class ViewModelingService:
         available: dict[str, list[str]],
         column_type_fn=None,
         base_table=None,
+        custom_columns_by_alias: dict[str, str] | None = None,
     ) -> str:
         """Render WHERE clause from user conditions."""
         parts: list[str] = []
         for i, wc in enumerate(where_clauses or []):
             rendered = self._build_condition_sql(
-                wc, available, is_join=False, column_type_fn=column_type_fn, base_table=base_table
+                wc,
+                available,
+                is_join=False,
+                column_type_fn=column_type_fn,
+                base_table=base_table,
+                custom_columns_by_alias=custom_columns_by_alias,
             )
             if not rendered:
                 continue
@@ -642,6 +733,7 @@ class ViewModelingService:
         right_table: str = "",
         column_type_fn=None,
         base_table=None,
+        custom_columns_by_alias: dict[str, str] | None = None,
     ) -> str:
         """Render a single condition for WHERE or ON clause."""
         base = base_table or (lambda n: n)
@@ -686,7 +778,14 @@ class ViewModelingService:
 
         open_paren = "(" if cond.get("open_paren") else ""
         close_paren = ")" if cond.get("close_paren") else ""
-        expr = f"{self._qi(left_table)}.{self._qi(left_column)}"
+        CUSTOM_COLUMNS_TABLE = "[custom_columns]"
+        custom_columns = custom_columns_by_alias or {}
+        if left_table == CUSTOM_COLUMNS_TABLE:
+            expr = self._validate_and_quote_custom_column_expression(
+                custom_columns.get(left_column, ""), left_column
+            )
+        else:
+            expr = f"{self._qi(left_table)}.{self._qi(left_column)}"
 
         if is_join:
             second_table = (cond.get("right_table") or right_table or "").strip()
@@ -703,9 +802,14 @@ class ViewModelingService:
                 raise ViewModelingError(
                     f"Sloupec {second_column} nepatří do tabulky {second_table}."
                 )
-            value_sql = (
-                f"{self._qi(second_table)}.{self._qi(second_column)}"
-            )
+            if second_table == CUSTOM_COLUMNS_TABLE:
+                value_sql = self._validate_and_quote_custom_column_expression(
+                    custom_columns.get(second_column, ""), second_column
+                )
+            else:
+                value_sql = (
+                    f"{self._qi(second_table)}.{self._qi(second_column)}"
+                )
 
         if operator in {"IS NULL", "IS NOT NULL"}:
             clause = f"{open_paren}{expr} {operator}{close_paren}"
@@ -817,7 +921,21 @@ class ViewModelingService:
         """Convert join payload into a list of ON conditions."""
         conditions = join.get("conditions") or []
         if conditions:
-            return [dict(c) for c in conditions if c.get("left_column") or c.get("right_column") or c.get("value")]
+            normalized: list[dict[str, Any]] = []
+            for c in conditions:
+                if not (
+                    c.get("left_column")
+                    or c.get("right_column")
+                    or c.get("value")
+                ):
+                    continue
+                nc = dict(c)
+                if not nc.get("left_table"):
+                    nc["left_table"] = left
+                if not nc.get("right_table"):
+                    nc["right_table"] = right
+                normalized.append(nc)
+            return normalized
         # Backward compatibility: old key_pairs become '=' conditions.
         key_pairs = join.get("key_pairs") or []
         return [

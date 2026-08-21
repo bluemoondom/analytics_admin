@@ -56,7 +56,7 @@ def create_magic_link(email: str, storage: UserStorage | None = None) -> tuple[s
     storage.save_magic_link(token_hash, email, expires_at)
 
     settings = get_settings()
-    base_url = settings.API_BASE_URL.rsplit("/", 1)[0] if "/" in settings.API_BASE_URL else settings.API_BASE_URL
+    base_url = settings.APP_BASE_URL.rstrip("/")
     url = f"{base_url}/auth/magic-link-redirect?token={token}"
     return token, url
 

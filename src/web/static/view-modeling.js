@@ -814,7 +814,7 @@
               <div class="column-main">
                 <input type="checkbox" data-table="${esc(table.name)}" data-col="${esc(c.name)}" data-role="select" ${c.selected ? 'checked' : ''}>
                 <span class="field-type">${esc(typeLabel(c))}</span>
-                <span class="field-name ${c.is_indexed ? 'indexed' : ''}" title="${c.is_indexed ? esc(t('indexed_column_hint')) : ''}">${esc(c.name)}</span>
+                <span class="field-name ${c.is_indexed ? 'indexed' : ''}" title="${esc(c.name)}${c.is_indexed ? '\n' + esc(t('indexed_column_hint')) : ''}">${esc(c.name)}</span>
               </div>
               <input type="text" class="col-alias" data-table="${esc(table.name)}" data-col="${esc(c.name)}" placeholder="${esc(t('alias_input_placeholder'))}" value="${esc(c.alias || '')}" ${c.selected ? 'disabled' : ''}>
             </div>
@@ -837,6 +837,8 @@
     });
     canvas.querySelectorAll('.column-item input[data-role="select"]').forEach(chk => {
       chk.addEventListener('change', () => {
+        const scrollContainer = chk.closest('.table-card-columns');
+        const scrollTop = scrollContainer ? scrollContainer.scrollTop : 0;
         const table = state.tablesOnCanvas.find(t => t.name === chk.dataset.table);
         if (!table) return;
         const col = table.columns.find(c => c.name === chk.dataset.col);
@@ -849,6 +851,8 @@
           renderGroupByEditor();
         }
         renderCanvas();
+        const newScrollContainer = document.querySelector(`.table-card[data-table="${esc(table.name)}"] .table-card-columns`);
+        if (newScrollContainer) newScrollContainer.scrollTop = scrollTop;
       });
     });
     canvas.querySelectorAll('.column-item .col-alias').forEach(inp => {
@@ -1378,13 +1382,18 @@
     renderWhereEditor();
   }
 
+  const CUSTOM_COLUMNS_TABLE = '[custom_columns]';
+
   function renderWhereEditor() {
     const tbody = $('#where-list');
     const tables = state.tablesOnCanvas;
+    const hasCustomColumns = state.customColumns.some(cc => (cc.alias || '').trim());
+    const customTable = { name: CUSTOM_COLUMNS_TABLE, columns: state.customColumns.filter(cc => (cc.alias || '').trim()).map(cc => ({ name: cc.alias })) };
+    const allTables = hasCustomColumns ? [...tables, customTable] : tables;
     tbody.innerHTML = state.whereClauses.map((wc, idx) => {
-      const table = tables.find(t => t.name === wc.table);
+      const table = allTables.find(t => t.name === wc.table);
       const cols = table ? table.columns : [];
-      const secondTable = tables.find(t => t.name === wc.second_table);
+      const secondTable = allTables.find(t => t.name === wc.second_table);
       const secondCols = secondTable ? secondTable.columns : [];
       const needsValue = !['IS NULL', 'IS NOT NULL'].includes(wc.operator);
       const isBetween = wc.operator === 'BETWEEN';
@@ -1397,7 +1406,7 @@
           <td><input type="checkbox" class="where-open" data-index="${idx}" ${wc.open_paren ? 'checked' : ''}></td>
           <td>
             <select class="where-table" data-index="${idx}">
-              ${tables.map(t => `<option value="${esc(t.name)}" ${t.name === wc.table ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}
+              ${allTables.map(t => `<option value="${esc(t.name)}" ${t.name === wc.table ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}
             </select>
           </td>
           <td>
@@ -1416,7 +1425,7 @@
           <td>
             <select class="where-second-table" data-index="${idx}" ${secondDisabled ? 'disabled' : ''}>
               <option value="">${esc(t('where_table_placeholder'))}</option>
-              ${tables.map(t => `<option value="${esc(t.name)}" ${t.name === wc.second_table ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}
+              ${allTables.map(t => `<option value="${esc(t.name)}" ${t.name === wc.second_table ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}
             </select>
           </td>
           <td>
@@ -1505,40 +1514,7 @@
         renderWhereEditor();
       });
     });
-    tbody.querySelectorAll('.where-value').forEach(inp => {
-      inp.addEventListener('focus', (e) => { state.activeWhereValue = { rowIndex: parseInt(e.target.dataset.index), input: e.target }; });
-      inp.addEventListener('input', (e) => { state.whereClauses[parseInt(e.target.dataset.index)].value = e.target.value; });
-      inp.addEventListener('change', (e) => {
-        const idx = parseInt(e.target.dataset.index);
-        if (e.target.value.trim()) {
-          state.whereClauses[idx].second_table = '';
-          state.whereClauses[idx].second_column = '';
-        }
-        renderWhereEditor();
-      });
-    });
-    tbody.querySelectorAll('.where-from-value').forEach(inp => {
-      inp.addEventListener('input', (e) => { state.whereClauses[parseInt(e.target.dataset.index)].from_value = e.target.value; });
-      inp.addEventListener('change', (e) => {
-        const idx = parseInt(e.target.dataset.index);
-        if (e.target.value.trim() || state.whereClauses[idx].to_value.trim()) {
-          state.whereClauses[idx].second_table = '';
-          state.whereClauses[idx].second_column = '';
-        }
-        renderWhereEditor();
-      });
-    });
-    tbody.querySelectorAll('.where-to-value').forEach(inp => {
-      inp.addEventListener('input', (e) => { state.whereClauses[parseInt(e.target.dataset.index)].to_value = e.target.value; });
-      inp.addEventListener('change', (e) => {
-        const idx = parseInt(e.target.dataset.index);
-        if (e.target.value.trim() || state.whereClauses[idx].from_value.trim()) {
-          state.whereClauses[idx].second_table = '';
-          state.whereClauses[idx].second_column = '';
-        }
-        renderWhereEditor();
-      });
-    });
+
     tbody.querySelectorAll('.where-second-table').forEach(sel => {
       sel.addEventListener('focus', (e) => {
         const idx = parseInt(e.target.dataset.index);
@@ -1562,6 +1538,18 @@
           renderWhereEditor();
         }
       });
+    });
+    tbody.querySelectorAll('.where-value').forEach(inp => {
+      inp.addEventListener('change', (e) => { state.whereClauses[parseInt(e.target.dataset.index)].value = e.target.value; });
+      inp.addEventListener('input', (e) => { state.whereClauses[parseInt(e.target.dataset.index)].value = e.target.value; });
+    });
+    tbody.querySelectorAll('.where-from-value').forEach(inp => {
+      inp.addEventListener('change', (e) => { state.whereClauses[parseInt(e.target.dataset.index)].from_value = e.target.value; });
+      inp.addEventListener('input', (e) => { state.whereClauses[parseInt(e.target.dataset.index)].from_value = e.target.value; });
+    });
+    tbody.querySelectorAll('.where-to-value').forEach(inp => {
+      inp.addEventListener('change', (e) => { state.whereClauses[parseInt(e.target.dataset.index)].to_value = e.target.value; });
+      inp.addEventListener('input', (e) => { state.whereClauses[parseInt(e.target.dataset.index)].to_value = e.target.value; });
     });
     tbody.querySelectorAll('.where-logical').forEach(sel => {
       sel.addEventListener('change', (e) => { state.whereClauses[parseInt(e.target.dataset.index)].logical_operator = e.target.value; });
@@ -1762,6 +1750,21 @@
 
   function generateBatTemplate(viewName, cfg) {
     const apiUrl = (cfg.api_base_url || 'http://127.0.0.1:8000').replace(/\/$/, '');
+    // If the separate API listener is used, the endpoint returns the same URL
+    // the admin UI uses; keep it as-is. If it still points at the admin app
+    // and a dedicated API port is configured locally, prefer that port.
+    const hasSeparateApiPort = cfg.api_port && cfg.api_host &&
+      !apiUrl.includes(':' + cfg.api_port);
+    let finalUrl = apiUrl;
+    if (hasSeparateApiPort) {
+      try {
+        const parsed = new URL(apiUrl);
+        parsed.port = String(cfg.api_port);
+        finalUrl = parsed.toString().replace(/\/$/, '');
+      } catch (_) {
+        // Leave URL unchanged if parsing fails.
+      }
+    }
     const apiKeyHeader = cfg.api_key_header || 'X-API-Key';
     const prefix = cfg.api_key_prefix || '';
     const rawMethod = (cfg.method || 'GET').toUpperCase();
@@ -1778,7 +1781,7 @@
       : method === 'POST'
       ? `\r\nrem Metoda: POST pro filtrovany export (vyzaduje BODY_GET), GET pro bezfiltry, PUT pro insert.\r\nset "METHOD=${method}"\r\nrem Pro filtrovany export vlozte JSON do BODY_GET (napr. {""sloupec"":""hodnota""}).\r\nset "BODY_GET="\r\n${getBodyExample}`
       : `\r\nrem Metoda: GET pro export, PUT pro insert.\r\nset "METHOD=${method}"\r\nrem Pro filtrovany GET vlozte JSON do BODY_GET (napr. {""sloupec"":""hodnota""}). Pokud je prazdne, pouzije se klasicky GET bez filtru.\r\nset "BODY_GET="\r\n${getBodyExample}`;
-    return `@echo off\r\nrem Nastav pracovni adresar na slozku s timto bat souborem, aby se export ukladal vedle nej.\r\ncd /d "%~dp0"\r\n\r\nset "API_URL=${apiUrl}"\r\nset "API_KEY=<YOUR_API_KEY>"\r\nset "API_KEY_HEADER=${apiKeyHeader}"\r\nset "EXPORT_DIR=%~dp0export"\r\nset "VIEW_NAME=${viewName}"\r\n${variables}\r\n${hint}\r\n\r\nif not "%~1"=="" set "VIEW_NAME=%~1"\r\n\r\nsetlocal EnableExtensions\r\nset "URL=%API_URL%/%VIEW_NAME%"\r\n\r\nrem Nazev vystupniho souboru: parametr, nebo view_RRRRMMDD_HHMMSS.json\r\nif not "%~2"=="" (\r\n    set "OUTFILE=%~2"\r\n) else (\r\n    for /f %%T in ('powershell -NoProfile -Command "Get-Date -Format yyyyMMdd_HHmmss"') do set "TS=%%T"\r\n    if not exist "%EXPORT_DIR%" mkdir "%EXPORT_DIR%"\r\n    call set "OUTFILE=%EXPORT_DIR%\\%VIEW_NAME%_%%TS%%.json"\r\n)\r\n\r\necho Ladeni: OUTFILE=%OUTFILE%\r\n\r\nrem Overeni, ze je curl k dispozici\r\nwhere curl >nul 2>&1\r\nif errorlevel 1 (\r\n    echo Chyba: curl.exe nebyl nalezen. Je soucasti Windows 10/11. 1>&2\r\n    pause\r\n    exit /b 1\r\n)\r\n\r\nrem Vyber metody. GET/POST vraci data do souboru (s volitelnym filtrovacim telem), PUT odesila zadane telo.\r\nif /I "%METHOD%"=="GET" (\r\n    call :do_get\r\n) else if /I "%METHOD%"=="POST" (\r\n    call :do_post\r\n) else if /I "%METHOD%"=="PUT" (\r\n    call :do_put\r\n) else (\r\n    echo Chyba: neznama metoda "%METHOD%". Pouzijte GET, POST nebo PUT. 1>&2\r\n    pause\r\n    exit /b 1\r\n)\r\n\r\nendlocal\r\n\r\nrem Pro testovani ponechte pause, aby okno konzole zustalo otevrene.\r\nrem Odstrante, pokud bat pouzivate v automatizovane uloze.\r\npause\r\nexit /b 0\r\n\r\n:do_get\r\nrem Pokud je BODY_GET neprazdne, posle se jako JSON telo GET pozadavku (filtrovany vystup).\r\nif defined BODY_GET (\r\n    for /f "delims=" %%H in ('curl -s -o "%OUTFILE%" -w "%%{http_code}" -X GET -H "Content-Type: application/json" -H "%API_KEY_HEADER%: %API_KEY%" -d "%BODY_GET%" ${curlInsecure}"%URL%"') do set "HTTP_CODE=%%H"\r\n) else (\r\n    for /f "delims=" %%H in ('curl -s -o "%OUTFILE%" -w "%%{http_code}" -H "%API_KEY_HEADER%: %API_KEY%" ${curlInsecure}"%URL%"') do set "HTTP_CODE=%%H"\r\n)\r\n\r\nif not defined HTTP_CODE set "HTTP_CODE=000"\r\n\r\nif "%HTTP_CODE%"=="000" (\r\n    echo Chyba: server neni dostupny ^(%URL%^) 1>&2\r\n    if exist "%OUTFILE%" del "%OUTFILE%"\r\n    pause\r\n    exit /b 1\r\n)\r\n\r\nif not "%HTTP_CODE%"=="200" (\r\n    echo Chyba: server vratil HTTP %HTTP_CODE% 1>&2\r\n    type "%OUTFILE%" 1>&2\r\n    echo. 1>&2\r\n    del "%OUTFILE%"\r\n    pause\r\n    exit /b 1\r\n)\r\n\r\necho Export ulozen: %OUTFILE%\r\ngoto :eof\r\n\r\n:do_post\r\nrem POST vzdy odesila BODY_GET jako filtrovaci JSON.\r\nif not defined BODY_GET (\r\n    echo Chyba: POST vyzaduje BODY_GET s filtraci. Pouzijte GET pro cely vystup. 1>&2\r\n    pause\r\n    exit /b 1\r\n)\r\nfor /f "delims=" %%H in ('curl -s -o "%OUTFILE%" -w "%%{http_code}" -X POST -H "Content-Type: application/json" -H "%API_KEY_HEADER%: %API_KEY%" -d "%BODY_GET%" ${curlInsecure}"%URL%"') do set "HTTP_CODE=%%H"\r\n\r\nif not defined HTTP_CODE set "HTTP_CODE=000"\r\n\r\nif "%HTTP_CODE%"=="000" (\r\n    echo Chyba: server neni dostupny ^(%URL%^) 1>&2\r\n    if exist "%OUTFILE%" del "%OUTFILE%"\r\n    pause\r\n    exit /b 1\r\n)\r\n\r\nif not "%HTTP_CODE%"=="200" (\r\n    echo Chyba: server vratil HTTP %HTTP_CODE% 1>&2\r\n    type "%OUTFILE%" 1>&2\r\n    echo. 1>&2\r\n    del "%OUTFILE%"\r\n    pause\r\n    exit /b 1\r\n)\r\n\r\necho Export ulozen: %OUTFILE%\r\ngoto :eof\r\n\r\n:do_put\r\nif defined BODY_PUT_FILE (\r\n    for /f "delims=" %%H in ('curl -s -o "%OUTFILE%" -w "%%{http_code}" -X PUT -H "Content-Type: application/json" -H "%API_KEY_HEADER%: %API_KEY%" -d @"%BODY_PUT_FILE%" ${curlInsecure}"%URL%"') do set "HTTP_CODE=%%H"\r\n) else (\r\n    for /f "delims=" %%H in ('curl -s -o "%OUTFILE%" -w "%%{http_code}" -X PUT -H "Content-Type: application/json" -H "%API_KEY_HEADER%: %API_KEY%" -d "%BODY_PUT%" ${curlInsecure}"%URL%"') do set "HTTP_CODE=%%H"\r\n)\r\n\r\nif not defined HTTP_CODE set "HTTP_CODE=000"\r\n\r\nif "%HTTP_CODE%"=="000" (\r\n    echo Chyba: server neni dostupny ^(%URL%^) 1>&2\r\n    if exist "%OUTFILE%" del "%OUTFILE%"\r\n    pause\r\n    exit /b 1\r\n)\r\n\r\nif not "%HTTP_CODE%"=="200" (\r\n    echo Chyba: server vratil HTTP %HTTP_CODE% 1>&2\r\n    type "%OUTFILE%" 1>&2\r\n    echo. 1>&2\r\n    del "%OUTFILE%"\r\n    pause\r\n    exit /b 1\r\n)\r\n\r\necho Insert uspesny. Odpoved ulozena: %OUTFILE%\r\ngoto :eof\r\n`;
+    return `@echo off\r\nrem Nastav pracovni adresar na slozku s timto bat souborem, aby se export ukladal vedle nej.\r\ncd /d "%~dp0"\r\n\r\nset "API_URL=${finalUrl}"\r\nset "API_KEY=<YOUR_API_KEY>"\r\nset "API_KEY_HEADER=${apiKeyHeader}"\r\nset "EXPORT_DIR=%~dp0export"\r\nset "VIEW_NAME=${viewName}"\r\n${variables}\r\n${hint}\r\n\r\nif not "%~1"=="" set "VIEW_NAME=%~1"\r\n\r\nsetlocal EnableExtensions\r\nset "URL=%API_URL%/%VIEW_NAME%"\r\n\r\nrem Nazev vystupniho souboru: parametr, nebo view_RRRRMMDD_HHMMSS.json\r\nif not "%~2"=="" (\r\n    set "OUTFILE=%~2"\r\n) else (\r\n    for /f %%T in ('powershell -NoProfile -Command "Get-Date -Format yyyyMMdd_HHmmss"') do set "TS=%%T"\r\n    if not exist "%EXPORT_DIR%" mkdir "%EXPORT_DIR%"\r\n    call set "OUTFILE=%EXPORT_DIR%\\%VIEW_NAME%_%%TS%%.json"\r\n)\r\n\r\necho Ladeni: OUTFILE=%OUTFILE%\r\n\r\nrem Overeni, ze je curl k dispozici\r\nwhere curl >nul 2>&1\r\nif errorlevel 1 (\r\n    echo Chyba: curl.exe nebyl nalezen. Je soucasti Windows 10/11. 1>&2\r\n    pause\r\n    exit /b 1\r\n)\r\n\r\nrem Vyber metody. GET/POST vraci data do souboru (s volitelnym filtrovacim telem), PUT odesila zadane telo.\r\nif /I "%METHOD%"=="GET" (\r\n    call :do_get\r\n) else if /I "%METHOD%"=="POST" (\r\n    call :do_post\r\n) else if /I "%METHOD%"=="PUT" (\r\n    call :do_put\r\n) else (\r\n    echo Chyba: neznama metoda "%METHOD%". Pouzijte GET, POST nebo PUT. 1>&2\r\n    pause\r\n    exit /b 1\r\n)\r\n\r\nendlocal\r\n\r\nrem Pro testovani ponechte pause, aby okno konzole zustalo otevrene.\r\nrem Odstrante, pokud bat pouzivate v automatizovane uloze.\r\npause\r\nexit /b 0\r\n\r\n:do_get\r\nrem Pokud je BODY_GET neprazdne, posle se jako JSON telo GET pozadavku (filtrovany vystup).\r\nif defined BODY_GET (\r\n    for /f "delims=" %%H in ('curl -s -o "%OUTFILE%" -w "%%{http_code}" -X GET -H "Content-Type: application/json" -H "%API_KEY_HEADER%: %API_KEY%" -d "%BODY_GET%" ${curlInsecure}"%URL%"') do set "HTTP_CODE=%%H"\r\n) else (\r\n    for /f "delims=" %%H in ('curl -s -o "%OUTFILE%" -w "%%{http_code}" -H "%API_KEY_HEADER%: %API_KEY%" ${curlInsecure}"%URL%"') do set "HTTP_CODE=%%H"\r\n)\r\n\r\nif not defined HTTP_CODE set "HTTP_CODE=000"\r\n\r\nif "%HTTP_CODE%"=="000" (\r\n    echo Chyba: server neni dostupny ^(%URL%^) 1>&2\r\n    if exist "%OUTFILE%" del "%OUTFILE%"\r\n    pause\r\n    exit /b 1\r\n)\r\n\r\nif not "%HTTP_CODE%"=="200" (\r\n    echo Chyba: server vratil HTTP %HTTP_CODE% 1>&2\r\n    type "%OUTFILE%" 1>&2\r\n    echo. 1>&2\r\n    del "%OUTFILE%"\r\n    pause\r\n    exit /b 1\r\n)\r\n\r\necho Export ulozen: %OUTFILE%\r\ngoto :eof\r\n\r\n:do_post\r\nrem POST vzdy odesila BODY_GET jako filtrovaci JSON.\r\nif not defined BODY_GET (\r\n    echo Chyba: POST vyzaduje BODY_GET s filtraci. Pouzijte GET pro cely vystup. 1>&2\r\n    pause\r\n    exit /b 1\r\n)\r\nfor /f "delims=" %%H in ('curl -s -o "%OUTFILE%" -w "%%{http_code}" -X POST -H "Content-Type: application/json" -H "%API_KEY_HEADER%: %API_KEY%" -d "%BODY_GET%" ${curlInsecure}"%URL%"') do set "HTTP_CODE=%%H"\r\n\r\nif not defined HTTP_CODE set "HTTP_CODE=000"\r\n\r\nif "%HTTP_CODE%"=="000" (\r\n    echo Chyba: server neni dostupny ^(%URL%^) 1>&2\r\n    if exist "%OUTFILE%" del "%OUTFILE%"\r\n    pause\r\n    exit /b 1\r\n)\r\n\r\nif not "%HTTP_CODE%"=="200" (\r\n    echo Chyba: server vratil HTTP %HTTP_CODE% 1>&2\r\n    type "%OUTFILE%" 1>&2\r\n    echo. 1>&2\r\n    del "%OUTFILE%"\r\n    pause\r\n    exit /b 1\r\n)\r\n\r\necho Export ulozen: %OUTFILE%\r\ngoto :eof\r\n\r\n:do_put\r\nif defined BODY_PUT_FILE (\r\n    for /f "delims=" %%H in ('curl -s -o "%OUTFILE%" -w "%%{http_code}" -X PUT -H "Content-Type: application/json" -H "%API_KEY_HEADER%: %API_KEY%" -d @"%BODY_PUT_FILE%" ${curlInsecure}"%URL%"') do set "HTTP_CODE=%%H"\r\n) else (\r\n    for /f "delims=" %%H in ('curl -s -o "%OUTFILE%" -w "%%{http_code}" -X PUT -H "Content-Type: application/json" -H "%API_KEY_HEADER%: %API_KEY%" -d "%BODY_PUT%" ${curlInsecure}"%URL%"') do set "HTTP_CODE=%%H"\r\n)\r\n\r\nif not defined HTTP_CODE set "HTTP_CODE=000"\r\n\r\nif "%HTTP_CODE%"=="000" (\r\n    echo Chyba: server neni dostupny ^(%URL%^) 1>&2\r\n    if exist "%OUTFILE%" del "%OUTFILE%"\r\n    pause\r\n    exit /b 1\r\n)\r\n\r\nif not "%HTTP_CODE%"=="200" (\r\n    echo Chyba: server vratil HTTP %HTTP_CODE% 1>&2\r\n    type "%OUTFILE%" 1>&2\r\n    echo. 1>&2\r\n    del "%OUTFILE%"\r\n    pause\r\n    exit /b 1\r\n)\r\n\r\necho Insert uspesny. Odpoved ulozena: %OUTFILE%\r\ngoto :eof\r\n`;
   }
 
   function insertIntoActiveWhereValue(text) {

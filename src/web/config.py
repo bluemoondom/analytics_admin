@@ -82,14 +82,25 @@ class Settings:
             "API_BASE_URL",
             f"https://127.0.0.1:8444/{self.API_TENANT}" if self.API_TENANT else "https://127.0.0.1:8444",
         )
+        # Base URL of the admin web application. Used for magic-link emails and
+        # other browser redirects. Falls back to API_BASE_URL for backwards
+        # compatibility when not set explicitly.
+        self.APP_BASE_URL: str = os.getenv("APP_BASE_URL") or self.API_BASE_URL
         # Allowlist of hosts/domains that may send requests to the app.
+        app_base_host = (
+            self.APP_BASE_URL.split("://", 1)[-1].split("/", 1)[0].split(":", 1)[0]
+            if self.APP_BASE_URL
+            else ""
+        )
         api_base_host = (
             self.API_BASE_URL.split("://", 1)[-1].split("/", 1)[0].split(":", 1)[0]
             if self.API_BASE_URL
             else ""
         )
         default_trusted_hosts = ["localhost", "127.0.0.1", "[::1]", "testserver", "testclient"]
-        if api_base_host:
+        if app_base_host:
+            default_trusted_hosts.append(app_base_host)
+        if api_base_host and api_base_host != app_base_host:
             default_trusted_hosts.append(api_base_host)
         self.TRUSTED_HOSTS: list[str] = [
             host.strip()
@@ -138,9 +149,19 @@ class Settings:
         hsts_default = "false" if self.LOCALHOST_MODE else "true"
         self.HSTS_ENABLED: bool = os.getenv("HSTS_ENABLED", hsts_default).lower() in ("1", "true", "yes")
 
-        # Uvicorn HTTP listener
+        # Uvicorn HTTP listener for the admin web application
         self.HTTP_HOST: str = os.getenv("HTTP_HOST", "0.0.0.0")
         self.HTTP_PORT: int = int(os.getenv("HTTP_PORT", "8444"))
+
+        # Optional separate listener for the public API. When API_HOST/API_PORT
+        # are set, the public API is served on its own uvicorn instance. If
+        # empty, the API runs together with the admin app on HTTP_HOST:HTTP_PORT.
+        self.API_HOST: str = os.getenv("API_HOST", "")
+        self.API_PORT: int | None = (
+            int(os.getenv("API_PORT"))
+            if os.getenv("API_PORT")
+            else None
+        )
 
         # SSL / HTTPS: either point uvicorn at PEM files directly or extract a
         # PFX (.pfx/.p12) bundle on startup into temporary PEM files.
@@ -148,6 +169,19 @@ class Settings:
         self.SSL_KEYFILE: str = os.getenv("SSL_KEYFILE", "")
         self.SSL_PFX_PATH: str = os.getenv("SSL_PFX_PATH", "")
         self.SSL_PFX_PASSWORD: str = os.getenv("SSL_PFX_PASSWORD", "")
+
+    def api_base_url(self) -> str:
+        """Return the URL clients should use to reach the public API.
+
+        When a separate API listener is configured via API_HOST/API_PORT,
+        build the URL from those values and the configured tenant. Otherwise
+        fall back to the explicit API_BASE_URL environment variable.
+        """
+        if self.API_HOST and self.API_PORT is not None:
+            scheme = "https" if self.SSL_PFX_PATH or self.SSL_CERTFILE else "http"
+            tenant = self.API_TENANT
+            return f"{scheme}://{self.API_HOST}:{self.API_PORT}/{tenant}" if tenant else f"{scheme}://{self.API_HOST}:{self.API_PORT}"
+        return self.API_BASE_URL
 
 
 @lru_cache

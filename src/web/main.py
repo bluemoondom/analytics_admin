@@ -19,16 +19,8 @@ from src.web.security import CSRFMiddleware, SecurityHeadersMiddleware
 from src.web.services.migrations import run_migrations
 
 
-def create_app() -> FastAPI:
-    """Create and configure the FastAPI application."""
-    settings = get_settings()
-    app = FastAPI(title=settings.APP_TITLE)
-
-    app.mount("/static", StaticFiles(directory="src/web/static"), name="static")
-    templates = Jinja2Templates(directory="src/web/templates")
-
-    run_migrations()
-
+def _setup_middleware(app: FastAPI, settings) -> None:
+    """Add common security middleware to an app."""
     # Middleware is added innermost first: the request passes through
     # TrustedHostMiddleware -> SecurityHeadersMiddleware -> CORSMiddleware
     # -> CSRFMiddleware before reaching the routers.
@@ -47,6 +39,18 @@ def create_app() -> FastAPI:
         TrustedHostMiddleware,
         allowed_hosts=settings.TRUSTED_HOSTS,
     )
+
+
+def create_app() -> FastAPI:
+    """Create and configure the FastAPI application."""
+    settings = get_settings()
+    app = FastAPI(title=settings.APP_TITLE)
+
+    app.mount("/static", StaticFiles(directory="src/web/static"), name="static")
+    templates = Jinja2Templates(directory="src/web/templates")
+
+    run_migrations()
+    _setup_middleware(app, settings)
 
     app.include_router(auth.router)
     app.include_router(dashboards.router)
@@ -76,6 +80,19 @@ def create_app() -> FastAPI:
             "login.html",
             {"title": f"Přihlášení – {settings.APP_TITLE}"},
         )
+
+    return app
+
+
+def create_api_app() -> FastAPI:
+    """Create a FastAPI application that only exposes the public API."""
+    settings = get_settings()
+    app = FastAPI(title=f"{settings.APP_TITLE} – public API")
+
+    run_migrations()
+    _setup_middleware(app, settings)
+
+    app.include_router(public_api.router)
 
     return app
 
