@@ -50,6 +50,12 @@
     return String(str || '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
   }
 
+  function escHtml(str) {
+    // Escape only characters that are unsafe inside HTML text/content. Leaves
+    // single quotes untouched so SQL literals such as '00100001' stay readable.
+    return String(str || '').replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+  }
+
   function typeLabel(col) {
     // Always show the raw database type (INT, NUMERIC, NVARCHAR, DATETIME, ...)
     // instead of a translated UI label.
@@ -762,37 +768,60 @@
     }
     const primary = state.tablesOnCanvas.find(t => t.isPrimary);
     const primaryName = primary ? primary.name : '';
+    // Resolve which side of each join is the "joined" table. Start with the
+    // primary table as known; for every join the side that is not yet known is
+    // the one being attached, so the badge belongs on that card. This keeps
+    // the UI consistent regardless of whether the user drew the link from the
+    // new table to the existing one or vice versa. Aliases are preserved because
+    // we only compare the names that appear in state.joins/tablesOnCanvas.
+    const joinedTables = new Set(primaryName ? [primaryName] : []);
+    const joinTarget = new Map();
+    state.joins.forEach(j => {
+      const left = j.left_table || primaryName;
+      const right = j.right_table;
+      if (!right) return;
+      const leftKnown = joinedTables.has(left);
+      const rightKnown = joinedTables.has(right);
+      const target = rightKnown && !leftKnown ? left : right;
+      joinTarget.set(j, target);
+      joinedTables.add(left);
+      joinedTables.add(right);
+    });
     const joinInfoForCard = (tableName) => {
       if (tableName === primaryName) return '';
-      // Show the JOIN definition only on the card that is the RIGHT side of the
-      // join (matching where the JOIN clause lives in SQL).  A card that is the
-      // LEFT side of a join does not repeat the badge.
-      const joins = state.joins.filter(j => j.right_table === tableName);
+      const joins = state.joins.filter(j => joinTarget.get(j) === tableName);
       if (!joins.length) return '';
       const badges = joins.map(j => {
-        const other = j.left_table;
-        const pairs = [];
+        const target = joinTarget.get(j) || j.right_table;
+        const other = target === j.right_table ? (j.left_table || primaryName) : j.right_table;
+        const parts = [];
+        const addPart = (txt) => { if (txt) parts.push(txt); };
         if (j.key_pairs && j.key_pairs.length) {
           j.key_pairs.forEach(p => {
-            pairs.push(`${other}.${p.left_column === other ? p.left_column : p.right_column} = ${tableName}.${p.right_table === tableName ? p.right_column : p.left_column}`);
+            addPart(`${escHtml(other)}.${escHtml(p.left_column)} = ${escHtml(target)}.${escHtml(p.right_column)}`);
           });
         }
         if (j.conditions && j.conditions.length) {
           j.conditions.forEach(c => {
-            if (c.use_value || !['=', '=='].includes((c.operator || '='))) return;
-            const leftTable = c.left_table || j.left_table;
+            const leftTable = c.left_table || j.left_table || primaryName;
             const rightTable = c.right_table || j.right_table;
             const leftCol = c.left_column;
             const rightCol = c.right_column;
-            if (!leftCol || !rightCol) return;
-            const isTableOnLeft = leftTable === tableName;
-            const isTableOnRight = rightTable === tableName;
-            if (!isTableOnLeft && !isTableOnRight) return;
-            pairs.push(`${leftTable}.${leftCol} = ${rightTable}.${rightCol}`);
+            const op = c.operator || '=';
+            if (leftTable === target || rightTable === target) {
+              if (c.use_value || !rightCol) {
+                const val = (c.value || '').trim();
+                if (leftCol && val) {
+                  addPart(`${escHtml(leftTable)}.${escHtml(leftCol)} ${escHtml(op)} ${escHtml(val)}`);
+                }
+              } else if (leftCol && rightCol) {
+                addPart(`${escHtml(leftTable)}.${escHtml(leftCol)} ${escHtml(op)} ${escHtml(rightTable)}.${escHtml(rightCol)}`);
+              }
+            }
           });
         }
-        if (!pairs.length) return '';
-        return `<span class="join-badge" title="${esc(j.join_type)} JOIN ${esc(other)}">${esc(j.join_type)} ${esc(other)}: ${esc(pairs.join(' AND '))}</span>`;
+        if (!parts.length) return '';
+        return `<span class="join-badge" title="${esc(j.join_type)} JOIN ${esc(other)}">${esc(j.join_type)} ${esc(other)}: ${escHtml(parts.join(' AND '))}</span>`;
       }).filter(Boolean);
       return `<div class="table-card-joins">${badges.join('')}</div>`;
     };
@@ -1730,7 +1759,8 @@
       return;
     }
     try {
-      const cfg = await api('GET', '/api-config');
+      const connectorId = getSelectedConnectorId();
+      const cfg = await api('GET', '/api-config' + (connectorId ? '?connector_id=' + encodeURIComponent(connectorId) : ''));
       const putEl = $('#view-api-put-enabled');
       if (putEl && putEl.checked) cfg.method = 'PUT';
       const bat = generateBatTemplate(viewName, cfg);
@@ -1749,27 +1779,22 @@
   }
 
   function generateBatTemplate(viewName, cfg) {
-    const apiUrl = (cfg.api_base_url || 'http://127.0.0.1:8000').replace(/\/$/, '');
-    // If the separate API listener is used, the endpoint returns the same URL
-    // the admin UI uses; keep it as-is. If it still points at the admin app
-    // and a dedicated API port is configured locally, prefer that port.
-    const hasSeparateApiPort = cfg.api_port && cfg.api_host &&
-      !apiUrl.includes(':' + cfg.api_port);
-    let finalUrl = apiUrl;
-    if (hasSeparateApiPort) {
-      try {
-        const parsed = new URL(apiUrl);
-        parsed.port = String(cfg.api_port);
-        finalUrl = parsed.toString().replace(/\/$/, '');
-      } catch (_) {
-        // Leave URL unchanged if parsing fails.
-      }
+    // The server returns the base public API URL without a tenant. Append the
+    // tenant from the active connector so each view points at its own API path.
+    let baseUrl = (cfg.api_base_url || 'http://127.0.0.1:8000').replace(/\/$/, '');
+    const tenant = (cfg.api_tenant || '').replace(/^\/+|\/+$/g, '');
+    let finalUrl = tenant ? baseUrl + '/' + tenant : baseUrl;
+    try {
+      const parsed = new URL(finalUrl);
+      finalUrl = parsed.toString().replace(/\/$/, '');
+    } catch (_) {
+      // Leave URL unchanged if parsing fails.
     }
     const apiKeyHeader = cfg.api_key_header || 'X-API-Key';
     const prefix = cfg.api_key_prefix || '';
     const rawMethod = (cfg.method || 'GET').toUpperCase();
     const method = ['GET', 'POST', 'PUT'].includes(rawMethod) ? rawMethod : 'GET';
-    const useHttps = apiUrl.startsWith('https://');
+    const useHttps = finalUrl.startsWith('https://');
     const hasCert = Boolean(cfg.ssl_certfile || cfg.ssl_pfx_path);
     const curlInsecure = useHttps && hasCert ? '-k ' : '';
     const hint = prefix

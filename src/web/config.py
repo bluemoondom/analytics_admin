@@ -173,15 +173,16 @@ class Settings:
     def api_base_url(self) -> str:
         """Return the URL clients should use to reach the public API.
 
-        When a separate API listener is configured via API_HOST/API_PORT,
-        build the URL from those values and the configured tenant. Otherwise
-        fall back to the explicit API_BASE_URL environment variable.
+        Prefer the explicit API_BASE_URL environment variable when set. Only
+        fall back to API_HOST/API_PORT when no explicit URL is configured.
         """
+        if self.API_BASE_URL:
+            return self.API_BASE_URL
         if self.API_HOST and self.API_PORT is not None:
             scheme = "https" if self.SSL_PFX_PATH or self.SSL_CERTFILE else "http"
             tenant = self.API_TENANT
             return f"{scheme}://{self.API_HOST}:{self.API_PORT}/{tenant}" if tenant else f"{scheme}://{self.API_HOST}:{self.API_PORT}"
-        return self.API_BASE_URL
+        return ""
 
 
 @lru_cache

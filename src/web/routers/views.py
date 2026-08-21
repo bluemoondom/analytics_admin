@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from src.web.auth import require_user
 from src.web.config import get_settings
 from src.web.db import DatabaseError
-from src.web.models.user import User
+from src.web.models.user import Connector, User
 from src.web.services.user_storage import UserStorage
 from src.web.services.view_modeling import (
     ViewModelingError,
@@ -155,16 +155,32 @@ def delete_saved_view(
 
 
 @router.get("/api-config", response_model=dict[str, str])
-def get_api_config(user: Annotated[User, Depends(require_user)]):
+def get_api_config(
+    user: Annotated[User, Depends(require_user)],
+    connector_id: int | None = None,
+):
     """Return public API connection details for bat template generation.
 
     The full API key is intentionally not exposed; only a short prefix is
     returned as a hint so the user can verify they are using the right key.
+
+    The tenant is taken from the requested connector (or the user's active
+    connector) so the generated .bat file points at the correct public API path.
     """
     settings = get_settings()
+    user_storage = UserStorage()
+    connector: Connector | None = None
+    if connector_id:
+        connector = user_storage.get_connector_by_id(connector_id)
+        if connector is not None and connector.user_id != user.id:
+            connector = None
+    if connector is None:
+        connector = user_storage.get_connector_by_id(user.connector_id)
+    tenant = (connector.api_tenant if connector else settings.API_TENANT) or ""
     key = settings.API_KEY or ""
     return {
         "api_base_url": settings.api_base_url(),
+        "api_tenant": tenant,
         "api_key_header": settings.API_KEY_HEADER,
         "api_key_prefix": key[:4] if len(key) >= 4 else "",
         "ssl_certfile": settings.SSL_CERTFILE or "",
