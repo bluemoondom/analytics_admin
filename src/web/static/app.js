@@ -437,6 +437,7 @@
   }
 
   function init() {
+    console.log('app.js init start');
     bindLanguageSwitcher();
     bindUserMenu();
     if (window.ConnectorManager) window.ConnectorManager.init();
@@ -455,6 +456,7 @@
     }
     bindEvents();
     bindMenuSwitch();
+    console.log('app.js init end');
   }
 
   function bindUserMenu() {
@@ -586,19 +588,34 @@
     const dashBtn = $('#menu-dashboards');
     const viewBtn = $('#menu-view-modeling');
     const connBtn = $('#menu-connectors');
-    if (!dashBtn || !viewBtn) return;
-    dashBtn.addEventListener('click', () => {
+    if (!dashBtn || !viewBtn) {
+      console.error('Menu buttons not found');
+      return;
+    }
+
+    function onMenuClick(handler) {
+      return (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        handler();
+      };
+    }
+
+    dashBtn.addEventListener('click', onMenuClick(() => {
+      console.log('Dashboard menu clicked');
       hideConnectorSection();
       showDashboardSection();
-    });
-    viewBtn.addEventListener('click', () => {
+    }));
+    viewBtn.addEventListener('click', onMenuClick(() => {
+      console.log('View modeling menu clicked');
       hideConnectorSection();
       showViewModelingSection();
-    });
+    }));
     if (connBtn) {
-      connBtn.addEventListener('click', () => {
+      connBtn.addEventListener('click', onMenuClick(() => {
+        console.log('Connectors menu clicked');
         showConnectorSection();
-      });
+      }));
     }
   }
 
@@ -655,11 +672,14 @@
 
   function bindEvents() {
     bindControl('new-dashboard', 'click', newDashboard);
-    bindControl('save-dashboard', 'click', saveDashboard);
+    bindControl('save-dashboard', 'click', async () => { await saveDashboard(); await refreshData(); });
     bindControl('delete-dashboard', 'click', deleteDashboard);
     bindControl('view-select', 'change', () => onViewChange(true));
     bindControl('add-chart', 'click', addChart);
     bindControl('add-series', 'click', () => addSeriesRow());
+    bindControl('add-kpi', 'click', addKpi);
+    bindControl('kpi-compare', 'change', toggleKpiCompare);
+    bindBackgroundThemeSelect();
     bindCustomChartTypeSelect();
     bindControl('export-excel', 'click', exportExcel);
     bindControl('export-pdf', 'click', exportPdf);
@@ -808,6 +828,107 @@
       hidden.dispatchEvent(new Event('change', { bubbles: true }));
     }
     renderCharts();
+  }
+
+  const BACKGROUND_THEMES = {
+    default: { labelKey: 'background_theme_default', bg: '#ffffff', text: '#374151' },
+    pastel_blue: { labelKey: 'background_theme_pastel_blue', bg: '#dbeafe', text: '#1e3a8a' },
+    pastel_green: { labelKey: 'background_theme_pastel_green', bg: '#dcfce7', text: '#14532d' },
+    pastel_pink: { labelKey: 'background_theme_pastel_pink', bg: '#fce7f3', text: '#831843' },
+    pastel_yellow: { labelKey: 'background_theme_pastel_yellow', bg: '#fef9c3', text: '#713f12' },
+    pastel_purple: { labelKey: 'background_theme_pastel_purple', bg: '#f3e8ff', text: '#581c87' },
+    muted_blue: { labelKey: 'background_theme_muted_blue', bg: '#bfdbfe', text: '#1e40af' },
+    muted_green: { labelKey: 'background_theme_muted_green', bg: '#bbf7d0', text: '#166534' },
+    muted_gray: { labelKey: 'background_theme_muted_gray', bg: '#e5e7eb', text: '#374151' },
+    muted_beige: { labelKey: 'background_theme_muted_beige', bg: '#f5f5dc', text: '#4b5563' },
+    muted_sage: { labelKey: 'background_theme_muted_sage', bg: '#d1d5db', text: '#374151' },
+    black: { labelKey: 'background_theme_black', bg: '#111827', text: '#f3f4f6' },
+  };
+
+  function applyBackgroundTheme() {
+    const dash = state.currentDashboard;
+    const theme = (dash ? dash.background_theme : 'default') || 'default';
+    const body = document.body;
+    if (!body) return;
+    body.className = body.className.replace(/\btheme-bg-\S+/g, '').trim();
+    body.classList.add('theme-bg-' + theme);
+  }
+
+  function bindBackgroundThemeSelect() {
+    const trigger = $('#background-theme-trigger');
+    const optionsEl = $('#background-theme-options');
+    const container = $('#background-theme-switcher');
+    if (!trigger || !optionsEl || !container) return;
+
+    function currentTheme() {
+      return (state.currentDashboard && state.currentDashboard.background_theme) || 'default';
+    }
+
+    function renderOptions() {
+      optionsEl.innerHTML = '';
+      const selected = currentTheme();
+      Object.entries(BACKGROUND_THEMES).forEach(([value, theme]) => {
+        const option = document.createElement('div');
+        option.className = 'background-theme-option' + (value === selected ? ' selected' : '');
+        option.dataset.value = value;
+        option.setAttribute('role', 'option');
+        option.setAttribute('aria-selected', String(value === selected));
+        option.innerHTML = `<span class="theme-swatch" style="background:${esc(theme.bg)}"></span><span>${esc(t(theme.labelKey))}</span>`;
+        option.addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (!state.currentDashboard) {
+            state.currentDashboard = { background_theme: value };
+          } else {
+            state.currentDashboard.background_theme = value;
+          }
+          updateTrigger();
+          closeDropdown();
+          applyBackgroundTheme();
+          if (state.currentDashboard.id) saveDashboard();
+        });
+        optionsEl.appendChild(option);
+      });
+    }
+
+    function updateTrigger() {
+      const selected = currentTheme();
+      const theme = BACKGROUND_THEMES[selected] || BACKGROUND_THEMES.default;
+      trigger.querySelector('.theme-swatch').style.background = theme.bg;
+      trigger.querySelector('.selected-text').textContent = t(theme.labelKey);
+    }
+
+    function openDropdown() {
+      renderOptions();
+      optionsEl.classList.remove('hidden');
+      optionsEl.setAttribute('aria-hidden', 'false');
+      container.classList.add('open');
+      trigger.setAttribute('aria-expanded', 'true');
+    }
+
+    function closeDropdown() {
+      optionsEl.classList.add('hidden');
+      optionsEl.setAttribute('aria-hidden', 'true');
+      container.classList.remove('open');
+      trigger.setAttribute('aria-expanded', 'false');
+    }
+
+    trigger.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const currentlyHidden = optionsEl.classList.contains('hidden');
+      if (currentlyHidden) {
+        openDropdown();
+      } else {
+        closeDropdown();
+      }
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!container.contains(e.target)) {
+        closeDropdown();
+      }
+    });
+
+    updateTrigger();
   }
 
   function bindTableThemeSelect() {
@@ -997,9 +1118,12 @@
       aggregations: {},
       column_aliases: {},
       charts: [],
+      kpi_cards: [],
       number_format: '#,##0.00',
       date_time_format: 'dd.MM.yyyy HH:mm',
       color_scheme: 'default',
+      table_theme: 'default',
+      background_theme: 'default',
       charts_per_row: 3,
       chart_card_height: 360,
       show_grid: true,
@@ -1011,14 +1135,17 @@
     };
     state.columns = [];
     state.chartInstances = {};
+    state.kpiValues = {};
     $('#empty-state').classList.add('hidden');
     $('#builder').classList.remove('hidden');
     $('#delete-dashboard').classList.add('hidden');
     $('#dashboard-name').value = state.currentDashboard.name;
     $('#view-select').value = '';
+    $('#kpi-panel').classList.add('hidden');
     $('#charts-panel').classList.add('hidden');
     closeRightPanel();
     clearTable();
+    clearKpiCards();
     clearCharts();
     renderSourcePanel();
     renderDimensionPanel();
@@ -1030,6 +1157,7 @@
     const dash = await api('GET', '/' + id);
     state.currentDashboard = dash;
     state.chartInstances = {};
+    state.kpiValues = {};
     $('#empty-state').classList.add('hidden');
     $('#builder').classList.remove('hidden');
     $('#delete-dashboard').classList.remove('hidden');
@@ -1041,10 +1169,14 @@
     state.currentDashboard.show_grid = parseBool(dash.show_grid, true);
     state.currentDashboard.replace_null_with_empty = parseBool(dash.replace_null_with_empty, true);
     state.currentDashboard.date_time_format = dash.date_time_format || 'dd.MM.yyyy HH:mm';
-      state.currentDashboard.color_numeric_sign = parseBool(dash.color_numeric_sign, false);
-      const rl = parseInt(dash.row_limit, 10);
-      state.currentDashboard.row_limit = Number.isNaN(rl) ? 1000 : Math.max(0, rl);
+    state.currentDashboard.table_theme = dash.table_theme || 'default';
+    state.currentDashboard.background_theme = dash.background_theme || 'default';
+    state.currentDashboard.color_numeric_sign = parseBool(dash.color_numeric_sign, false);
+    const rl = parseInt(dash.row_limit, 10);
+    state.currentDashboard.row_limit = Number.isNaN(rl) ? 1000 : Math.max(0, rl);
+    applyBackgroundTheme();
     clearTable();
+    clearKpiCards();
     clearCharts();
     await refreshData();
     renderDashboardList();
@@ -1127,6 +1259,8 @@
     renderMeasurePanel();
     renderFilters();
     renderChartControls();
+    renderKpiControls();
+    $('#kpi-panel').classList.remove('hidden');
     $('#charts-panel').classList.remove('hidden');
     renderMoreSettings();
     $('#chart-series-list').innerHTML = '';
@@ -1779,10 +1913,13 @@
       if (state.data.error) {
         clearTable();
         $('#row-count').textContent = state.data.error;
+        renderKpiCards();
         renderCharts();
         return;
       }
       renderTable();
+      await loadKpiValues();
+      renderKpiCards();
       renderCharts();
     } catch (err) {
       clearTable();
@@ -2210,6 +2347,160 @@
     $('#row-count').textContent = '';
   }
 
+  function toggleKpiCompare() {
+    const checked = $('#kpi-compare').checked;
+    $('#kpi-compare-row').classList.toggle('hidden', !checked);
+  }
+
+  async function addKpi() {
+    const dash = state.currentDashboard;
+    const column = $('#kpi-column').value;
+    if (!column) {
+      alert(t('kpi_no_column_error'));
+      return;
+    }
+    ensureVisible(column);
+    const kpi = {
+      title: $('#kpi-title').value.trim() || t('new_kpi_default_title'),
+      column,
+      aggregation: $('#kpi-aggregation').value,
+      prefix: $('#kpi-prefix').value.trim(),
+      suffix: $('#kpi-suffix').value.trim(),
+      decimals: parseInt($('#kpi-decimals').value, 10) || 0,
+      compare_with_previous: $('#kpi-compare').checked,
+      previous_column: $('#kpi-compare').checked ? ($('#kpi-previous-column').value || column) : '',
+      previous_aggregation: $('#kpi-aggregation').value,
+      color: $('#kpi-color').value || '#818cf8',
+      thresholds: [],
+    };
+    dash.kpi_cards.push(kpi);
+    $('#kpi-title').value = '';
+    $('#kpi-prefix').value = '';
+    $('#kpi-suffix').value = '';
+    $('#kpi-decimals').value = '0';
+    $('#kpi-color').value = '#818cf8';
+    $('#kpi-compare').checked = false;
+    toggleKpiCompare();
+    await saveDashboard();
+    await refreshData();
+  }
+
+  async function removeKpi(idx) {
+    state.currentDashboard.kpi_cards.splice(idx, 1);
+    await saveDashboard();
+    await refreshData();
+  }
+
+  function computeKpiValue(kpi) {
+    const rows = state.data.rows || [];
+    if (!rows.length || !kpi.column) return null;
+    return _aggregateRows(rows, kpi.column, kpi.aggregation);
+  }
+
+  async function loadKpiValues() {
+    const dash = state.currentDashboard;
+    if (!dash || !dash.kpi_cards || !dash.kpi_cards.length) return;
+    if (!dash.id) {
+      // New dashboard: compute KPIs from the current table data directly.
+      state.kpiValues = {};
+      dash.kpi_cards.forEach((kpi, idx) => {
+        state.kpiValues[idx] = { value: computeKpiValue(kpi) };
+      });
+      return;
+    }
+    try {
+      const rows = await api('POST', '/' + dash.id + '/kpi') || [];
+      state.kpiValues = Object.fromEntries(rows.map(r => [r.id, r]));
+    } catch (err) {
+      console.error('KPI load failed', err);
+      state.kpiValues = {};
+    }
+  }
+
+  function formatKpiValue(value, decimals) {
+    if (value === null || value === undefined || Number.isNaN(value)) return '-';
+    const num = parseFloat(value);
+    if (Number.isNaN(num)) return value;
+    const formatted = num.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+    // Use narrow non-breaking space as thousands separator fallback for some locales.
+    return formatted;
+  }
+
+  function formatKpiDisplay(kpi, value) {
+    if (value === null || value === undefined || Number.isNaN(value)) return '-';
+    const num = parseFloat(value);
+    if (Number.isNaN(num)) return value;
+    const formatted = num.toLocaleString(undefined, { minimumFractionDigits: kpi.decimals || 0, maximumFractionDigits: kpi.decimals || 0 });
+    const prefix = (kpi.prefix || '').trim();
+    const suffix = (kpi.suffix || '').trim();
+    const parts = [];
+    if (prefix) parts.push(esc(prefix));
+    parts.push(`<span class="kpi-number">${esc(formatted)}</span>`);
+    if (suffix) parts.push(esc(suffix));
+    return parts.join(' ');
+  }
+
+  function evaluateKpiThresholds(kpi, value) {
+    if (!kpi.thresholds || !kpi.thresholds.length) return '';
+    for (const rule of kpi.thresholds) {
+      const threshold = parseFloat(rule.value);
+      if (Number.isNaN(threshold)) continue;
+      let matches = false;
+      switch (rule.comparison) {
+        case '>': matches = value > threshold; break;
+        case '>=': matches = value >= threshold; break;
+        case '<': matches = value < threshold; break;
+        case '<=': matches = value <= threshold; break;
+        case '==': matches = value === threshold; break;
+      }
+      if (matches) return rule.color || 'green';
+    }
+    return '';
+  }
+
+  function renderKpiCards() {
+    const list = $('#kpi-list');
+    if (!list) return;
+    list.innerHTML = '';
+    const dash = state.currentDashboard;
+    const cards = dash.kpi_cards || [];
+    if (!cards.length) {
+      $('#kpi-panel').classList.add('hidden');
+      return;
+    }
+    $('#kpi-panel').classList.remove('hidden');
+    cards.forEach((kpi, idx) => {
+      const lookupId = kpi.id === null || kpi.id === undefined ? idx : kpi.id;
+      const computed = state.kpiValues[lookupId] || {};
+      const value = computed.value ?? null;
+      const previous = computed.previous_value ?? null;
+      const change = computed.change_pct;
+      const thresholdColor = evaluateKpiThresholds(kpi, value);
+      const customColor = kpi.color || '';
+      const card = document.createElement('div');
+      card.className = 'kpi-card' + (thresholdColor ? ' kpi-' + thresholdColor : '');
+      if (customColor) {
+        card.style.borderColor = customColor;
+        card.style.borderLeftWidth = '4px';
+        card.style.borderLeftColor = customColor;
+      }
+      card.innerHTML = `
+        <div class="kpi-header">
+          <span class="kpi-title">${esc(kpi.title)}</span>
+          <button data-idx="${idx}" class="btn danger remove-kpi" type="button">×</button>
+        </div>
+        <div class="kpi-body">
+          <span class="kpi-value">${formatKpiDisplay(kpi, value)}</span>
+          ${change !== null && change !== undefined ? `<span class="kpi-change ${change > 0 ? 'positive' : (change < 0 ? 'negative' : 'neutral')}">${change > 0 ? '↑' : (change < 0 ? '↓' : '→')} ${formatKpiValue(Math.abs(change), 1)}%</span>` : ''}
+        </div>
+      `;
+      list.appendChild(card);
+    });
+    list.querySelectorAll('.remove-kpi').forEach(btn => {
+      btn.addEventListener('click', () => removeKpi(parseInt(btn.dataset.idx)));
+    });
+  }
+
   function sortBy(col) {
     const dash = state.currentDashboard;
     let list = dash.sort || [];
@@ -2236,6 +2527,7 @@
     dash.name = $('#dashboard-name').value.trim() || t('dashboard_unnamed_fallback');
     dash.filters = collectFilters();
     dash.charts = collectCharts();
+    dash.kpi_cards = collectKpiCards();
     dash.number_format = valueOr('#setting-number-format', dash.number_format || '#,##0.00');
     dash.date_time_format = valueOr('#setting-date-time-format', dash.date_time_format || 'dd.MM.yyyy HH:mm');
     dash.color_scheme = valueOr('#setting-color-scheme', dash.color_scheme || 'default');
@@ -2256,9 +2548,12 @@
         ? await api('PUT', '/' + dash.id, dash)
         : await api('POST', '/', dash);
       state.currentDashboard = saved;
+      applyBackgroundTheme();
       await loadDashboards();
       $('#delete-dashboard').classList.remove('hidden');
       renderDashboardList();
+      await loadKpiValues();
+      renderKpiCards();
       renderCharts();
     } catch (err) {
       alert(t('dashboard_save_error', { error: err.message }));
@@ -2418,6 +2713,19 @@
     updateTrigger();
   }
 
+  function renderKpiControls() {
+    const kpiColumn = $('#kpi-column');
+    const kpiPrevious = $('#kpi-previous-column');
+    if (!kpiColumn) return;
+    const numberCols = (state.columns || [])
+      .filter(c => c.type === 'number')
+      .map(c => `<option value="${esc(c.name)}">${esc(displayName(c.name))}</option>`)
+      .join('');
+    const opts = numberCols || `<option value="">${esc(t('no_numeric_column_option'))}</option>`;
+    kpiColumn.innerHTML = opts;
+    if (kpiPrevious) kpiPrevious.innerHTML = `<option value="">${esc(t('kpi_same_column_option'))}</option>` + opts;
+  }
+
   function renderChartControls() {
     const dash = state.currentDashboard;
     // Any table column may be used for charting, not just dimensions.
@@ -2484,6 +2792,10 @@
 
   function collectCharts() {
     return (state.currentDashboard.charts || []).map(c => ({ ...c }));
+  }
+
+  function collectKpiCards() {
+    return (state.currentDashboard.kpi_cards || []).map(k => ({ ...k }));
   }
 
   function renderMoreSettings() {
@@ -2596,6 +2908,12 @@
     Object.values(state.chartInstances).forEach(c => c.destroy());
     state.chartInstances = {};
     $('#chart-list').innerHTML = '';
+  }
+
+  function clearKpiCards() {
+    state.kpiValues = {};
+    const list = $('#kpi-list');
+    if (list) list.innerHTML = '';
   }
 
   function renderCharts() {

@@ -544,6 +544,7 @@
     state.tablesOnCanvas.push(await buildTableCard(tableName, isPrimary, alias));
     renderCanvas();
     renderJoinEditor();
+    renderGroupByEditor();
   }
 
   async function addSubview() {
@@ -583,6 +584,7 @@
       $('#subview-alias').value = '';
       renderCanvas();
       renderJoinEditor();
+      renderGroupByEditor();
     } catch (err) {
       alert(t('subview_columns_load_error', { error: err.message }));
     }
@@ -632,6 +634,7 @@
     }
     renderCanvas();
     renderJoinEditor();
+    renderGroupByEditor();
   }
 
   // The real database name of a canvas card (alias -> base table/view).

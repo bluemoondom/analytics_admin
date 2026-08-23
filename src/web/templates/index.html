@@ -47,6 +47,64 @@
       </div>
     </div>
 
+    <div class="background-theme-switcher" id="background-theme-switcher">
+      <button type="button" class="background-theme-trigger" id="background-theme-trigger" aria-haspopup="listbox" aria-expanded="false">
+        <span class="theme-swatch" style="background:#ffffff"></span>
+        <span class="selected-text" data-i18n="background_theme_default">Výchozí</span>
+        <span class="dropdown-chevron">▼</span>
+      </button>
+      <div class="background-theme-options hidden" id="background-theme-options" role="listbox" aria-hidden="true">
+        <div class="background-theme-option" data-value="default" data-i18n="background_theme_default">
+          <span class="theme-swatch" style="background:#ffffff"></span>
+          <span>Výchozí</span>
+        </div>
+        <div class="background-theme-option" data-value="pastel_blue" data-i18n="background_theme_pastel_blue">
+          <span class="theme-swatch" style="background:#dbeafe"></span>
+          <span>Pastel modrá</span>
+        </div>
+        <div class="background-theme-option" data-value="pastel_green" data-i18n="background_theme_pastel_green">
+          <span class="theme-swatch" style="background:#dcfce7"></span>
+          <span>Pastel zelená</span>
+        </div>
+        <div class="background-theme-option" data-value="pastel_pink" data-i18n="background_theme_pastel_pink">
+          <span class="theme-swatch" style="background:#fce7f3"></span>
+          <span>Pastel růžová</span>
+        </div>
+        <div class="background-theme-option" data-value="pastel_yellow" data-i18n="background_theme_pastel_yellow">
+          <span class="theme-swatch" style="background:#fef9c3"></span>
+          <span>Pastel žlutá</span>
+        </div>
+        <div class="background-theme-option" data-value="pastel_purple" data-i18n="background_theme_pastel_purple">
+          <span class="theme-swatch" style="background:#f3e8ff"></span>
+          <span>Pastel fialová</span>
+        </div>
+        <div class="background-theme-option" data-value="muted_blue" data-i18n="background_theme_muted_blue">
+          <span class="theme-swatch" style="background:#bfdbfe"></span>
+          <span>Matná modrá</span>
+        </div>
+        <div class="background-theme-option" data-value="muted_green" data-i18n="background_theme_muted_green">
+          <span class="theme-swatch" style="background:#bbf7d0"></span>
+          <span>Matná zelená</span>
+        </div>
+        <div class="background-theme-option" data-value="muted_gray" data-i18n="background_theme_muted_gray">
+          <span class="theme-swatch" style="background:#e5e7eb"></span>
+          <span>Matná šedá</span>
+        </div>
+        <div class="background-theme-option" data-value="muted_beige" data-i18n="background_theme_muted_beige">
+          <span class="theme-swatch" style="background:#f5f5dc"></span>
+          <span>Matná béžová</span>
+        </div>
+        <div class="background-theme-option" data-value="muted_sage" data-i18n="background_theme_muted_sage">
+          <span class="theme-swatch" style="background:#d1d5db"></span>
+          <span>Matná šalvějová</span>
+        </div>
+        <div class="background-theme-option" data-value="black" data-i18n="background_theme_black">
+          <span class="theme-swatch" style="background:#111827"></span>
+          <span>Černá</span>
+        </div>
+      </div>
+    </div>
+
     <nav class="top-menu">
       <button id="menu-dashboards" class="btn primary active" data-i18n="menu_dashboards">Dashboardy</button>
       <button id="menu-view-modeling" class="btn" data-i18n="menu_view_modeling">Modelování views</button>
@@ -105,6 +163,11 @@
             <button id="right-panel-open" class="btn right-panel-open primary" type="button">
               <span data-i18n="right_panel_open_button">❯ Nastavení</span>
             </button>
+          </div>
+
+          <div id="kpi-panel" class="panel hidden">
+            <h3 data-i18n="kpi_heading">KPI</h3>
+            <div id="kpi-list" class="kpi-list"></div>
           </div>
 
           <div id="charts-panel" class="panel hidden">
@@ -169,6 +232,66 @@
               </button>
               <div id="rp-section-filters" class="rp-accordion-body open">
                 <div id="filter-bar" class="filter-bar"></div>
+              </div>
+            </div>
+
+            <div class="rp-accordion">
+              <button class="rp-accordion-header" type="button" data-section="kpi">
+                <span data-i18n="add_kpi_heading">Přidat KPI kartu</span>
+                <span class="rp-chevron">&#10095;</span>
+              </button>
+              <div id="rp-section-kpi" class="rp-accordion-body">
+                <div class="kpi-form">
+                  <div class="form-row">
+                    <label class="full-width"><span data-i18n="kpi_title_label">Název KPI</span>
+                      <input id="kpi-title" type="text" data-i18n-placeholder="kpi_title_placeholder" placeholder="např. Celkový obrat" />
+                    </label>
+                  </div>
+                  <div class="form-row">
+                    <label><span data-i18n="kpi_column_label">Sloupec</span>
+                      <select id="kpi-column"></select>
+                    </label>
+                    <label><span data-i18n="kpi_aggregation_label">Agregace</span>
+                      <select id="kpi-aggregation">
+                        <option value="sum" data-i18n="series_aggregation_sum">Součet</option>
+                        <option value="count" data-i18n="series_aggregation_count">Počet</option>
+                        <option value="avg" data-i18n="series_aggregation_avg">Průměr</option>
+                        <option value="min" data-i18n="series_aggregation_min">Min</option>
+                        <option value="max" data-i18n="series_aggregation_max">Max</option>
+                      </select>
+                    </label>
+                  </div>
+                  <div class="form-row">
+                    <label><span data-i18n="kpi_prefix_label">Předpona</span>
+                      <input id="kpi-prefix" type="text" data-i18n-placeholder="kpi_prefix_placeholder" placeholder="např. Kč" />
+                    </label>
+                    <label><span data-i18n="kpi_suffix_label">Přípona</span>
+                      <input id="kpi-suffix" type="text" data-i18n-placeholder="kpi_suffix_placeholder" placeholder="např. ks" />
+                    </label>
+                  </div>
+                  <div class="form-row">
+                    <label><span data-i18n="kpi_decimals_label">Des. místa</span>
+                      <input id="kpi-decimals" type="number" value="0" min="0" max="6" />
+                    </label>
+                    <label><span data-i18n="kpi_color_label">Barva ohraničení</span>
+                      <input id="kpi-color" type="color" value="#818cf8" />
+                    </label>
+                  </div>
+                  <div class="form-row">
+                    <label class="inline">
+                      <input type="checkbox" id="kpi-compare">
+                      <span data-i18n="kpi_compare_checkbox">Porovnat s minulým obdobím</span>
+                    </label>
+                  </div>
+                  <div id="kpi-compare-row" class="form-row hidden">
+                    <label><span data-i18n="kpi_previous_column_label">Porovnací sloupec</span>
+                      <select id="kpi-previous-column"></select>
+                    </label>
+                  </div>
+                  <div class="form-row">
+                    <button id="add-kpi" class="btn primary" type="button" data-i18n="add_kpi_button">Přidat KPI kartu</button>
+                  </div>
+                </div>
               </div>
             </div>
 

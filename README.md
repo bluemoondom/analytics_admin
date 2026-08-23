@@ -31,6 +31,7 @@ Analytics Admin is a multi-user business intelligence platform that allows organ
 - Ability to show or hide individual values in the chart legend
 - Toggle for displaying or hiding gridlines
 - Configuration of chart dimensions and layout, including the number of charts displayed per row
+- KPI cards with compare columns
 
 ---
 

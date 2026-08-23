@@ -7,14 +7,19 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, HTTPException
 
 from src.web.auth import require_user
-from src.web.models.dashboard import Dashboard, DashboardSummary, DataQueryRequest
+from src.web.models.dashboard import (
+    Dashboard,
+    DashboardSummary,
+    DataQueryRequest,
+)
 from src.web.models.user import User, UserRole
-from src.web.services.export import export_table_to_excel
+from src.web.services.export import export_pivot_to_excel, export_table_to_excel
 from src.web.services.query import (
     dashboard_to_query_payload,
     describe_view,
     discover_views,
     run_data_query,
+    run_kpi_query,
 )
 from src.web.services.storage import DashboardStorage
 from src.web.services.user_storage import UserStorage
@@ -168,6 +173,36 @@ def get_dashboard_data(
     return run_data_query(dashboard_to_query_payload(dashboard), connector=connector)
 
 
+@router.post("/{dashboard_id}/kpi", response_model=list[dict[str, Any]])
+def get_dashboard_kpi(
+    dashboard_id: int,
+    storage: StorageDep,
+    user: Annotated[User, Depends(require_user)],
+):
+    """Return computed KPI card values for a dashboard."""
+    dashboard = storage.get_dashboard_for_user(dashboard_id, user)
+    if not dashboard:
+        raise HTTPException(status_code=404, detail="Dashboard not found")
+    connector = _dashboard_connector(dashboard) or _user_connector(user)
+    payload = dashboard_to_query_payload(dashboard)
+    payload.visible_columns = list(
+        dict.fromkeys(
+            [k.column for k in dashboard.kpi_cards]
+            + [k.previous_column for k in dashboard.kpi_cards if k.previous_column]
+        )
+    )
+    payload.row_limit = 0
+    return [
+        {
+            "id": k.id,
+            "title": k.title,
+            "column": k.column,
+            **run_kpi_query(k, payload, connector=connector),
+        }
+        for k in dashboard.kpi_cards
+    ]
+
+
 @router.post("/{dashboard_id}/export/excel")
 def export_dashboard_excel(
     dashboard_id: int,
@@ -179,14 +214,37 @@ def export_dashboard_excel(
     if not dashboard:
         raise HTTPException(status_code=404, detail="Dashboard not found")
     connector = _dashboard_connector(dashboard) or _user_connector(user)
-    data = run_data_query(dashboard_to_query_payload(dashboard), connector=connector)
+    pivot_data = run_data_query(dashboard_to_query_payload(dashboard), connector=connector)
     filename = f"{dashboard.name or 'dashboard'}_data.xlsx".replace(" ", "_")
-    body = export_table_to_excel(
-        data["columns"],
-        data["rows"],
-        dashboard.column_aliases,
-        sheet_name=dashboard.name or "Data",
-    )
+
+    dims = pivot_data.get("dimension_columns") or dashboard.dimension_columns or []
+    in_pivot_mode = bool(dims) and any(agg.strip() for agg in dashboard.aggregations.values())
+
+    if in_pivot_mode:
+        detail_payload = dashboard_to_query_payload(dashboard)
+        detail_payload.group_by = []
+        detail_payload.aggregations = {}
+        detail_payload.dimension_columns = []
+        detail_payload.drill_down_columns = []
+        detail_data = run_data_query(detail_payload, connector=connector)
+        body = export_pivot_to_excel(
+            detail_columns=detail_data["columns"],
+            detail_rows=detail_data["rows"],
+            pivot_columns=pivot_data["columns"],
+            pivot_rows=pivot_data["rows"],
+            dimension_columns=dims,
+            aggregations=dashboard.aggregations,
+            column_aliases=dashboard.column_aliases,
+            data_sheet_name="Data",
+            pivot_sheet_name="Kontingence",
+        )
+    else:
+        body = export_table_to_excel(
+            pivot_data["columns"],
+            pivot_data["rows"],
+            dashboard.column_aliases,
+            sheet_name=dashboard.name or "Data",
+        )
     from fastapi.responses import Response
 
     return Response(

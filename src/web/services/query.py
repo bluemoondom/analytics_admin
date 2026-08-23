@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from src.web.db import fetch_data, get_columns, list_views
-from src.web.models.dashboard import Dashboard, DataQueryRequest
+from src.web.models.dashboard import Dashboard, DashboardKpiCard, DataQueryRequest
 
 
 def discover_views(connector=None) -> list[dict[str, Any]]:
@@ -78,3 +78,51 @@ def dashboard_to_query_payload(dashboard: Dashboard) -> DataQueryRequest:
         color_numeric_sign=dashboard.color_numeric_sign,
         row_limit=dashboard.row_limit,
     )
+
+
+def _aggregate_rows(rows: list[dict[str, Any]], column: str, aggregation: str) -> float:
+    """Aggregate a column across rows on the server side."""
+    values = [float(r.get(column, 0) or 0) for r in rows]
+    if not values:
+        return 0.0
+    aggregation = aggregation.lower()
+    if aggregation == "count":
+        return float(len(rows))
+    if aggregation == "avg":
+        return sum(values) / len(values)
+    if aggregation == "min":
+        return min(values)
+    if aggregation == "max":
+        return max(values)
+    return sum(values)
+
+
+def run_kpi_query(
+    kpi: DashboardKpiCard,
+    payload: DataQueryRequest,
+    connector=None,
+) -> dict[str, Any]:
+    """Return value, previous value and change percentage for a KPI card."""
+    current_data = run_data_query(payload, connector=connector)
+    current = _aggregate_rows(
+        current_data.get("rows", []), kpi.column, kpi.aggregation
+    )
+
+    previous = None
+    change_pct = None
+    if kpi.compare_with_previous:
+        previous_payload = payload.model_copy()
+        previous_data = run_data_query(previous_payload, connector=connector)
+        previous = _aggregate_rows(
+            previous_data.get("rows", []),
+            kpi.previous_column or kpi.column,
+            kpi.previous_aggregation or kpi.aggregation,
+        )
+        if previous:
+            change_pct = ((current - previous) / previous) * 100
+
+    return {
+        "value": current,
+        "previous_value": previous,
+        "change_pct": change_pct,
+    }

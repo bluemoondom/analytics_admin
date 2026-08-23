@@ -15,6 +15,8 @@ from src.web.models.dashboard import (
     Dashboard,
     DashboardChart,
     DashboardFilter,
+    DashboardKpiCard,
+    KpiThreshold,
     SortRule,
 )
 
@@ -101,6 +103,8 @@ class DashboardStorage:
                     number_format TEXT,
                     date_time_format TEXT DEFAULT 'dd.MM.yyyy HH:mm',
                     color_scheme TEXT,
+                    table_theme TEXT,
+                    background_theme TEXT,
                     charts_per_row INTEGER,
                     chart_card_height INTEGER,
                     show_grid INTEGER DEFAULT 1,
@@ -129,6 +133,36 @@ class DashboardStorage:
                 )
                 """
             )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS dashboard_kpi_cards (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    dashboard_id INTEGER NOT NULL,
+                    title TEXT,
+                    column TEXT NOT NULL,
+                    aggregation TEXT NOT NULL DEFAULT 'sum',
+                    prefix TEXT,
+                    suffix TEXT,
+                    decimals INTEGER DEFAULT 0,
+                    compare_with_previous INTEGER DEFAULT 0,
+                    previous_column TEXT,
+                    previous_aggregation TEXT,
+                    color TEXT,
+                    thresholds TEXT,
+                    FOREIGN KEY (dashboard_id) REFERENCES dashboards(id) ON DELETE CASCADE
+                )
+                """
+            )
+            # Migration: add missing columns to dashboard_kpi_cards.
+            for col_name, col_type in [
+                ("color", "TEXT"),
+            ]:
+                try:
+                    conn.execute(
+                        f"ALTER TABLE dashboard_kpi_cards ADD COLUMN {col_name} {col_type}"
+                    )
+                except sqlite3.OperationalError:
+                    pass
             # Migration: add series/split_by_column/x_label/y_label columns if missing.
             for col_name, col_type in [
                 ("series", "TEXT"),
@@ -152,6 +186,8 @@ class DashboardStorage:
                         "number_format",
                         "date_time_format",
                         "color_scheme",
+                        "table_theme",
+                        "background_theme",
                         "charts_per_row",
                         "chart_card_height",
                         "show_grid",
@@ -214,7 +250,11 @@ class DashboardStorage:
                     "SELECT * FROM dashboard_charts WHERE dashboard_id = ?",
                     (row["id"],),
                 ).fetchall()
-                result.append(self._row_to_dashboard(row, charts))
+                kpi_cards = conn.execute(
+                    "SELECT * FROM dashboard_kpi_cards WHERE dashboard_id = ?",
+                    (row["id"],),
+                ).fetchall()
+                result.append(self._row_to_dashboard(row, charts, kpi_cards))
             return result
         finally:
             conn.close()
@@ -243,6 +283,8 @@ class DashboardStorage:
                 "number_format": dashboard.number_format,
                 "date_time_format": dashboard.date_time_format,
                 "color_scheme": dashboard.color_scheme,
+                "table_theme": dashboard.table_theme,
+                "background_theme": dashboard.background_theme,
                 "charts_per_row": dashboard.charts_per_row,
                 "chart_card_height": dashboard.chart_card_height,
                 "show_grid": int(dashboard.show_grid),
@@ -291,6 +333,33 @@ class DashboardStorage:
                         chart.split_by_column,
                         chart.x_label,
                         chart.y_label,
+                    ),
+                )
+            # Replace KPI cards.
+            conn.execute(
+                "DELETE FROM dashboard_kpi_cards WHERE dashboard_id = ?", (db_id,)
+            )
+            for kpi in dashboard.kpi_cards:
+                conn.execute(
+                    """
+                    INSERT INTO dashboard_kpi_cards
+                    (dashboard_id, title, column, aggregation, prefix, suffix, decimals,
+                     compare_with_previous, previous_column, previous_aggregation, color, thresholds)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        db_id,
+                        kpi.title,
+                        kpi.column,
+                        kpi.aggregation,
+                        kpi.prefix,
+                        kpi.suffix,
+                        kpi.decimals,
+                        int(kpi.compare_with_previous),
+                        kpi.previous_column,
+                        kpi.previous_aggregation,
+                        kpi.color,
+                        json.dumps([t.model_dump() for t in kpi.thresholds]),
                     ),
                 )
             conn.commit()
@@ -350,6 +419,8 @@ class DashboardStorage:
                     number_format NVARCHAR(50),
                     date_time_format NVARCHAR(50),
                     color_scheme NVARCHAR(50),
+                    table_theme NVARCHAR(50),
+                    background_theme NVARCHAR(50),
                     charts_per_row INT,
                     chart_card_height INT,
                     show_grid BIT,
@@ -387,6 +458,27 @@ class DashboardStorage:
                     )
                     """
                 )
+                cur.execute(
+                    """
+                    IF OBJECT_ID('dbo.dashboard_kpi_cards', 'U') IS NULL
+                    CREATE TABLE dbo.dashboard_kpi_cards (
+                        id INT IDENTITY(1,1) PRIMARY KEY,
+                    dashboard_id INT NOT NULL,
+                    title NVARCHAR(500),
+                    column NVARCHAR(255) NOT NULL,
+                    aggregation NVARCHAR(50) NOT NULL DEFAULT 'sum',
+                    prefix NVARCHAR(50),
+                    suffix NVARCHAR(50),
+                    decimals INT DEFAULT 0,
+                    compare_with_previous BIT DEFAULT 0,
+                    previous_column NVARCHAR(255),
+                    previous_aggregation NVARCHAR(50),
+                    color NVARCHAR(20),
+                    thresholds NVARCHAR(MAX),
+                        FOREIGN KEY (dashboard_id) REFERENCES dbo.dashboards(id) ON DELETE CASCADE
+                    )
+                    """
+                )
                 # Migration: add series/split_by_column/x_label/y_label columns if missing.
                 for col_name in ["series", "split_by_column", "x_label", "y_label"]:
                     cur.execute(
@@ -406,6 +498,8 @@ class DashboardStorage:
                     "number_format",
                     "date_time_format",
                     "color_scheme",
+                    "table_theme",
+                    "background_theme",
                     "charts_per_row",
                     "chart_card_height",
                     "show_grid",
@@ -415,7 +509,7 @@ class DashboardStorage:
                 ]:
                     sql_type = "NVARCHAR(MAX)" if col_name in ["dimension_columns", "drill_down_columns", "sort"] else (
                         "BIT" if col_name in ["show_grid", "drill_down_sort_desc", "replace_null_with_empty", "color_numeric_sign"] else (
-                            "NVARCHAR(50)" if col_name in ["number_format", "date_time_format", "color_scheme"] else "INT"
+                            "NVARCHAR(50)" if col_name in ["number_format", "date_time_format", "color_scheme", "table_theme", "background_theme"] else "INT"
                         )
                     )
                     cur.execute(
@@ -471,7 +565,7 @@ class DashboardStorage:
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
-    def _row_to_dashboard(self, row: Any, chart_rows: list[Any]) -> Dashboard:
+    def _row_to_dashboard(self, row: Any, chart_rows: list[Any], kpi_rows: list[Any] | None = None) -> Dashboard:
         visible = _safe_json_loads(_get_row_value(row, "visible_columns"), [])
         filters = [
             DashboardFilter(**f)
@@ -489,6 +583,8 @@ class DashboardStorage:
         number_format = _get_row_value(row, "number_format") or "#,##0.00"
         date_time_format = _get_row_value(row, "date_time_format") or "dd.MM.yyyy HH:mm"
         color_scheme = _get_row_value(row, "color_scheme") or "default"
+        table_theme = _get_row_value(row, "table_theme") or "default"
+        background_theme = _get_row_value(row, "background_theme") or "default"
         charts_per_row = _get_row_value(row, "charts_per_row")
         chart_card_height = _get_row_value(row, "chart_card_height")
         show_grid = _get_row_value(row, "show_grid")
@@ -533,6 +629,29 @@ class DashboardStorage:
                     y_label=c["y_label"] or "",
                 )
             )
+        kpi_cards: list[DashboardKpiCard] = []
+        for k in kpi_rows or []:
+            thresholds = _safe_json_loads(_get_row_value(k, "thresholds"), [])
+            if not isinstance(thresholds, list):
+                thresholds = []
+            kpi_cards.append(
+                DashboardKpiCard(
+                    id=_get_row_value(k, "id"),
+                    title=_get_row_value(k, "title") or "",
+                    column=_get_row_value(k, "column") or "",
+                    aggregation=_get_row_value(k, "aggregation") or "sum",
+                    prefix=_get_row_value(k, "prefix") or "",
+                    suffix=_get_row_value(k, "suffix") or "",
+                    decimals=int(_get_row_value(k, "decimals") or 0),
+                    compare_with_previous=bool(
+                        int(_get_row_value(k, "compare_with_previous") or 0)
+                    ),
+                    previous_column=_get_row_value(k, "previous_column") or "",
+                    previous_aggregation=_get_row_value(k, "previous_aggregation") or "sum",
+                    color=_get_row_value(k, "color") or "",
+                    thresholds=[KpiThreshold(**t) for t in thresholds if isinstance(t, dict)],
+                )
+            )
         sort_raw = _safe_json_loads(_get_row_value(row, "sort"), [])
         sort_rules = [SortRule(**s) for s in sort_raw if isinstance(s, dict)]
         return Dashboard(
@@ -551,9 +670,12 @@ class DashboardStorage:
             aggregations=aggregations,
             column_aliases=column_aliases,
             charts=charts,
+            kpi_cards=kpi_cards,
             number_format=number_format,
             date_time_format=date_time_format,
             color_scheme=color_scheme,
+            table_theme=table_theme,
+            background_theme=background_theme,
             charts_per_row=int(charts_per_row) if charts_per_row is not None else 3,
             chart_card_height=int(chart_card_height)
             if chart_card_height is not None
@@ -601,7 +723,12 @@ class DashboardStorage:
                     (row["id"],),
                 )
                 charts = cur.fetchall()
-                result.append(self._row_to_dashboard(row, charts))
+                cur.execute(
+                    "SELECT * FROM dbo.dashboard_kpi_cards WHERE dashboard_id = %s",
+                    (row["id"],),
+                )
+                kpi_cards = cur.fetchall()
+                result.append(self._row_to_dashboard(row, charts, kpi_cards))
             return result
 
     def _save_dashboard_mssql(self, dashboard: Dashboard) -> Dashboard:
@@ -618,6 +745,7 @@ class DashboardStorage:
                         aggregations = %s, column_aliases = %s, dimension_columns = %s,
                         drill_down_columns = %s, drill_down_sort_desc = %s,
                         number_format = %s, date_time_format = %s, color_scheme = %s,
+                        table_theme = %s, background_theme = %s,
                         charts_per_row = %s, chart_card_height = %s, show_grid = %s,
                         replace_null_with_empty = %s, color_numeric_sign = %s,
                         row_limit = %s, updated_at = GETUTCDATE()
@@ -643,6 +771,8 @@ class DashboardStorage:
                         dashboard.number_format,
                         dashboard.date_time_format,
                         dashboard.color_scheme,
+                        dashboard.table_theme,
+                        dashboard.background_theme,
                         dashboard.charts_per_row,
                         dashboard.chart_card_height,
                         int(dashboard.show_grid),
@@ -660,10 +790,11 @@ class DashboardStorage:
                     (user_id, connector_id, name, view_name, view_display_name, visible_columns, filters,
                      sort_by, sort_desc, sort, group_by, aggregations, column_aliases,
                      dimension_columns, drill_down_columns, drill_down_sort_desc,
-                     number_format, date_time_format, color_scheme, charts_per_row, chart_card_height, show_grid,
+                     number_format, date_time_format, color_scheme, table_theme, background_theme,
+                     charts_per_row, chart_card_height, show_grid,
                      replace_null_with_empty, color_numeric_sign, row_limit)
                     OUTPUT INSERTED.id
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """,
                     (
                         dashboard.user_id,
@@ -685,6 +816,8 @@ class DashboardStorage:
                         dashboard.number_format,
                         dashboard.date_time_format,
                         dashboard.color_scheme,
+                        dashboard.table_theme,
+                        dashboard.background_theme,
                         dashboard.charts_per_row,
                         dashboard.chart_card_height,
                         int(dashboard.show_grid),
@@ -716,6 +849,32 @@ class DashboardStorage:
                         chart.split_by_column,
                         chart.x_label,
                         chart.y_label,
+                    ),
+                )
+            cur.execute(
+                "DELETE FROM dbo.dashboard_kpi_cards WHERE dashboard_id = %s", (db_id,)
+            )
+            for kpi in dashboard.kpi_cards:
+                cur.execute(
+                    """
+                    INSERT INTO dbo.dashboard_kpi_cards
+                    (dashboard_id, title, column, aggregation, prefix, suffix, decimals,
+                     compare_with_previous, previous_column, previous_aggregation, color, thresholds)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    (
+                        db_id,
+                        kpi.title,
+                        kpi.column,
+                        kpi.aggregation,
+                        kpi.prefix,
+                        kpi.suffix,
+                        kpi.decimals,
+                        int(kpi.compare_with_previous),
+                        kpi.previous_column,
+                        kpi.previous_aggregation,
+                        kpi.color,
+                        json.dumps([t.model_dump() for t in kpi.thresholds]),
                     ),
                 )
             conn.commit()

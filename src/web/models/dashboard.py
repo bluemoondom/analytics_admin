@@ -31,6 +31,31 @@ class ChartSeries(BaseModel):
     render_as: str = "bar"  # bar | line
 
 
+class KpiThreshold(BaseModel):
+    """Single threshold rule for a KPI card."""
+
+    value: float
+    comparison: str = ">="  # > | >= | < | <= | ==
+    color: str = "green"  # green | red | yellow | neutral
+
+
+class DashboardKpiCard(BaseModel):
+    """Numeric KPI card attached to a dashboard."""
+
+    id: int | None = None
+    title: str = ""
+    column: str
+    aggregation: str = "sum"  # sum | count | avg | min | max
+    prefix: str = ""
+    suffix: str = ""
+    decimals: int = 0
+    compare_with_previous: bool = False
+    previous_column: str = ""
+    previous_aggregation: str = "sum"
+    color: str = ""
+    thresholds: list[KpiThreshold] = Field(default_factory=list)
+
+
 class DashboardChart(BaseModel):
     """Chart attached to a dashboard."""
 
@@ -81,11 +106,13 @@ class Dashboard(BaseModel):
     # Global sort direction for drill-down dimensions.
     drill_down_sort_desc: bool = False
     charts: list[DashboardChart] = Field(default_factory=list)
+    kpi_cards: list[DashboardKpiCard] = Field(default_factory=list)
     # Display settings.
     number_format: str = "#,##0.00"
     date_time_format: str = "dd.MM.yyyy HH:mm"
     color_scheme: str = "default"
     table_theme: str = "default"
+    background_theme: str = "default"
     charts_per_row: int = 3
     chart_card_height: int = 360
     show_grid: bool = True

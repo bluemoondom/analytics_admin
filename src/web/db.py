@@ -50,14 +50,25 @@ def source_connection():
 
 
 def _tab_obecny_prehled_exists(conn: Any, dialect=None) -> bool:
-    """Check whether TabObecnyPrehled exists without raising."""
+    """Check whether TabObecnyPrehled exists and is readable without raising."""
     if dialect and not dialect.list_tables_via_tabobecny_prehled():
         return False
     sql = "SELECT 1 FROM sys.objects WHERE object_id = OBJECT_ID('dbo.TabObecnyPrehled') AND type IN ('U')"
     try:
         cur = conn.cursor()
         cur.execute(sql)
-        return cur.fetchone() is not None
+        if cur.fetchone() is None:
+            return False
+    except pyodbc.Error:
+        return False
+
+    # The table may exist but the DB user may lack SELECT permission.
+    # Treat an unreadable TabObecnyPrehled as absent so callers fall back
+    # to sys.views / dialect metadata queries instead of failing.
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT TOP 0 NazevSys FROM dbo.TabObecnyPrehled")
+        return True
     except pyodbc.Error:
         return False
 
