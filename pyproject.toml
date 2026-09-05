@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "BI-analytics-admin"
-version = "0.1.2"
+version = "0.1.1"
 description = "Python project for datascience, web, and MSSQL integration"
 authors = [{name = "bluemoondom", email = "pillerova@mojeit.eu"}]
 readme = "README.md"
