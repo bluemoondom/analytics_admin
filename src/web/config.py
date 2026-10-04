@@ -97,7 +97,7 @@ class Settings:
             if self.API_BASE_URL
             else ""
         )
-        default_trusted_hosts = ["localhost", "127.0.0.1", "[::1]", "testserver", "testclient"]
+        default_trusted_hosts = ["localhost", "127.0.0.1", "[::1]", "testserver", "testclient", "86.225.2.78"]
         if app_base_host:
             default_trusted_hosts.append(app_base_host)
         if api_base_host and api_base_host != app_base_host:
@@ -115,6 +115,17 @@ class Settings:
         self.API_LOG_PATH: str = os.getenv(
             "API_LOG_PATH",
             os.path.join(os.path.dirname(__file__), "..", "..", "logs", "api_access.log"),
+        )
+        self.API_BLOCKLIST_403_404_PATH: str = os.getenv(
+            "API_BLOCKLIST_403_404_PATH",
+            os.path.join(os.path.dirname(__file__), "..", "..", "config", "api_blocklist_403_404.txt"),
+        )
+        self.API_BLOCKLIST_BAD_KEY_PATH: str = os.getenv(
+            "API_BLOCKLIST_BAD_KEY_PATH",
+            os.path.join(os.path.dirname(__file__), "..", "..", "config", "api_blocklist_bad_key.txt"),
+        )
+        self.API_BLOCKLIST_403_404_THRESHOLD: int = int(
+            os.getenv("API_BLOCKLIST_403_404_THRESHOLD", "20")
         )
 
         # Magic-link / JWT authentication. No default secret – the app

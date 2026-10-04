@@ -9,6 +9,8 @@ import hmac
 import json
 import logging
 import os
+import pathlib
+import threading
 from typing import Any
 
 import pyodbc
@@ -35,6 +37,147 @@ def _conn_with_cursor(connector=None):
         yield conn, cur
 
 router = APIRouter(tags=["public-api"])
+
+
+class _IpBlocklist:
+    """Persistent per-IP blocklist backed by a plain text file.
+
+    Each line holds one IP address. Empty lines and lines starting with ``#``
+    are ignored. The file is created lazily and kept in sync with the in-memory
+    set. A lock protects concurrent updates.
+    """
+
+    def __init__(self, path: str | os.PathLike[str]) -> None:
+        self._path = pathlib.Path(path)
+        self._ips: set[str] = set()
+        self._lock = threading.Lock()
+        self._load()
+
+    def _load(self) -> None:
+        if not self._path.exists():
+            return
+        try:
+            text = self._path.read_text(encoding="utf-8")
+        except OSError:
+            return
+        for line in text.splitlines():
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            self._ips.add(line)
+
+    def _save(self) -> None:
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+        content = "# Auto-generated IP blocklist\n" + "\n".join(sorted(self._ips)) + "\n"
+        with open(self._path, "w", encoding="utf-8") as fh:
+            fh.write(content)
+
+    def add(self, ip: str) -> None:
+        ip = ip.strip()
+        if not ip:
+            return
+        with self._lock:
+            if ip in self._ips:
+                return
+            self._ips.add(ip)
+            self._save()
+
+    def remove(self, ip: str) -> None:
+        ip = ip.strip()
+        with self._lock:
+            if ip not in self._ips:
+                return
+            self._ips.discard(ip)
+            self._save()
+
+    def __contains__(self, ip: str | None) -> bool:
+        if not ip:
+            return False
+        return ip.strip() in self._ips
+
+    def __iter__(self):
+        return iter(sorted(self._ips))
+
+    def __len__(self) -> int:
+        return len(self._ips)
+
+
+class _FailureCounter:
+    """Track recent 403/404 failures per IP and trigger persistent blocks.
+
+    Failures are counted per IP in a sliding 1-minute window. When the count
+    exceeds the configured threshold the IP is moved to the persistent blocklist.
+    The in-memory counters are lost on restart, but the persistent blocklist is
+    reloaded from disk.
+    """
+
+    def __init__(self, blocklist: _IpBlocklist, threshold: int) -> None:
+        self._blocklist = blocklist
+        self._threshold = threshold
+        self._counts: dict[tuple[str, dt.datetime], int] = {}
+        self._lock = threading.Lock()
+
+    def _window(self, when: dt.datetime | None = None) -> dt.datetime:
+        now = when or dt.datetime.now(dt.timezone.utc)
+        return now.replace(second=0, microsecond=0)
+
+    def record(self, ip: str, when: dt.datetime | None = None) -> bool:
+        """Record a 403/404 failure. Return True if IP was just blocked."""
+        ip = ip.strip()
+        if not ip or self._threshold <= 0:
+            return False
+        window = self._window(when)
+        with self._lock:
+            self._cleanup(window)
+            key = (ip, window)
+            self._counts[key] = self._counts.get(key, 0) + 1
+            total = sum(
+                value for (addr, _), value in self._counts.items() if addr == ip
+            )
+            if total > self._threshold and ip not in self._blocklist:
+                self._blocklist.add(ip)
+                return True
+        return False
+
+    def _cleanup(self, current_window: dt.datetime) -> None:
+        cutoff = current_window - dt.timedelta(minutes=1)
+        for key in list(self._counts):
+            if key[1] < cutoff:
+                del self._counts[key]
+
+
+# Persistent blocklists. They are initialised at import time so the files are
+# read as soon as the module loads, and are kept up-to-date at runtime.
+_blocklist_403_404: _IpBlocklist | None = None
+_blocklist_bad_key: _IpBlocklist | None = None
+_failure_counter: _FailureCounter | None = None
+
+
+def _get_blocklists() -> tuple[_IpBlocklist, _IpBlocklist, _FailureCounter]:
+    """Return the shared blocklist instances, creating them lazily."""
+    global _blocklist_403_404, _blocklist_bad_key, _failure_counter
+    settings = get_settings()
+    if _blocklist_403_404 is None:
+        _blocklist_403_404 = _IpBlocklist(settings.API_BLOCKLIST_403_404_PATH)
+    if _blocklist_bad_key is None:
+        _blocklist_bad_key = _IpBlocklist(settings.API_BLOCKLIST_BAD_KEY_PATH)
+    if _failure_counter is None:
+        _failure_counter = _FailureCounter(
+            _blocklist_403_404, settings.API_BLOCKLIST_403_404_THRESHOLD
+        )
+    return _blocklist_403_404, _blocklist_bad_key, _failure_counter
+
+
+def _reset_blocklists() -> None:
+    """Clear the shared blocklist singletons.
+
+    This is intended for tests so that each run starts with empty blocklists
+    and can point them at temporary paths.
+    """
+    global _blocklist_403_404, _blocklist_bad_key, _failure_counter
+    _blocklist_403_404 = None
+    _blocklist_bad_key = None
+    _failure_counter = None
 
 
 def _setup_logger() -> logging.Logger:
@@ -169,13 +312,18 @@ def _resolve_view_connector(
         )
         return connector, view, note
 
+    _, blocklist_bad_key, failure_counter = _get_blocklists()
+
     if not matched_key:
         api_logger.warning(
             "Invalid or unknown API key from %s for tenant=%s", client_ip, tenant
         )
+        blocklist_bad_key.add(client_ip)
         raise HTTPException(status_code=401, detail="Unauthorized")
     if not ip_allowed:
         api_logger.warning("IP not allowed: %s", client_ip)
+        if failure_counter.record(client_ip):
+            api_logger.warning("IP %s blocked after repeated 403/404 failures", client_ip)
         raise HTTPException(status_code=403, detail="IP not allowed")
     if rate_limited:
         api_logger.warning("Rate limit exceeded for %s", client_ip)
@@ -184,6 +332,8 @@ def _resolve_view_connector(
     api_logger.warning(
         "No API-enabled view %s found for tenant=%s", view_name, tenant
     )
+    if failure_counter.record(client_ip):
+        api_logger.warning("IP %s blocked after repeated 403/404 failures", client_ip)
     raise HTTPException(status_code=404, detail="View not found")
 
 
@@ -205,8 +355,15 @@ def _check_api_key(request: Request, connector) -> bool:
 def _ip_allowed(request_ip: str, connector=None) -> bool:
     """Return True if the client IP is in the allowlist.
 
+    Supports exact IPv4 addresses, CIDR notation (/24, /16) and the
+    special value ``0.0.0.0`` which allows all IPv4 addresses.
     An empty allowlist blocks all access by design.
     """
+
+    def _ip_to_int(ip: str) -> int:
+        parts = [int(part) for part in ip.split(".")]
+        return (parts[0] << 24) | (parts[1] << 16) | (parts[2] << 8) | parts[3]
+
     allowed_ips = (
         connector.api_allowed_ips
         if connector is not None and connector.api_allowed_ips
@@ -214,7 +371,32 @@ def _ip_allowed(request_ip: str, connector=None) -> bool:
     )
     if not allowed_ips:
         return False
-    return request_ip in allowed_ips
+
+    for allowed in allowed_ips:
+        allowed = allowed.strip()
+        if not allowed:
+            continue
+        if allowed == "0.0.0.0":
+            return True
+        if "/" in allowed:
+            network, prefix = allowed.split("/", 1)
+            try:
+                prefix = int(prefix)
+            except ValueError:
+                continue
+            if prefix < 0 or prefix > 32:
+                continue
+            try:
+                network_int = _ip_to_int(network)
+                ip_int = _ip_to_int(request_ip)
+            except (ValueError, IndexError):
+                continue
+            mask = (0xFFFFFFFF << (32 - prefix)) & 0xFFFFFFFF
+            if (network_int & mask) == (ip_int & mask):
+                return True
+        elif allowed == request_ip:
+            return True
+    return False
 
 
 def _rate_limit_ok(client_ip: str, connector=None) -> bool:
@@ -257,6 +439,11 @@ async def public_view(tenant: str, view_name: str, request: Request):
     columns. Without a body the full view result is returned.
     """
     client_ip = _get_client_ip(request)
+    blocklist_403_404, blocklist_bad_key, _ = _get_blocklists()
+    if client_ip in blocklist_403_404 or client_ip in blocklist_bad_key:
+        api_logger.warning("blocked IP %s", client_ip)
+        raise HTTPException(status_code=403, detail="Blocked")
+
     api_logger.info(
         "request tenant=%s view=%s method=%s ip=%s user_agent=%s",
         tenant,
