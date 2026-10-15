@@ -744,6 +744,25 @@
   </div>
 </div>
 
+  <!-- Modal for replicating a saved view to other connectors -->
+<div id="replicate-modal" class="modal hidden">
+  <div class="modal-backdrop"></div>
+  <div class="modal-content replicate-modal-content">
+    <h4 data-i18n="replicate_modal_title">Replikovat view</h4>
+    <p id="replicate-view-name"></p>
+    <div id="replicate-targets" class="replicate-targets"></div>
+    <label class="replicate-overwrite">
+      <input id="replicate-overwrite" type="checkbox" />
+      <span data-i18n="replicate_overwrite_label">Přepsat view se stejným názvem, které není kopií</span>
+    </label>
+    <ul id="replicate-results" class="replicate-results hidden"></ul>
+    <div class="modal-actions">
+      <button id="replicate-cancel" class="btn" data-i18n="replicate_close_button">Zavřít</button>
+      <button id="replicate-run" class="btn primary" data-i18n="replicate_run_button">Replikovat</button>
+    </div>
+  </div>
+</div>
+
 {% endblock %}
 {% block scripts %}
 <script src="/static/view-modeling.js"></script>

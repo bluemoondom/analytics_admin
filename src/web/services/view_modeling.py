@@ -1360,6 +1360,15 @@ class ViewModelingService:
         name = self._helios_view_name(name)
         sql = self.build_sql(payload)
 
+        existing = self.get_saved_view(view_id)
+        if not existing:
+            raise ViewModelingError("Uložené view nebylo nalezeno.")
+        existing_note = self._decode_view_note(existing.get("Poznamka") or "")
+        # Editing a replicated view keeps the link to its source so a later
+        # replication updates this copy instead of reporting a name conflict.
+        if "replicated_from" not in payload and existing_note.get("replicated_from"):
+            payload = {**payload, "replicated_from": existing_note["replicated_from"]}
+
         fields: dict[str, Any] = {
             "NazevSys": name,
             "Nazev": name,
@@ -1370,12 +1379,8 @@ class ViewModelingService:
         if "DefAttrs" in columns:
             fields["DefAttrs"] = self._def_attrs_sql_expression(payload)
 
-        existing = self.get_saved_view(view_id)
-        if not existing:
-            raise ViewModelingError("Uložené view nebylo nalezeno.")
         # Prevent moving a view to a different connector; connector_id in the note
         # must match the connector used to load this view.
-        existing_note = self._decode_view_note(existing.get("Poznamka") or "")
         existing_connector_id = existing_note.get("connector_id")
         new_connector_id = self._connector_id(payload)
         if (
@@ -1497,6 +1502,7 @@ class ViewModelingService:
         parsed["api_put_enabled"] = bool(note.get("api_put_enabled"))
         parsed["api_type"] = note.get("api_type") or "flat"
         parsed["connector_id"] = note.get("connector_id")
+        parsed["replicated_from"] = note.get("replicated_from")
         parsed["raw_sql"] = definition
         return parsed
 
@@ -1824,6 +1830,9 @@ class ViewModelingService:
             "api_type": (payload.get("api_type") or "flat").strip(),
             "connector_id": self._connector_id(payload),
         }
+        replicated_from = payload.get("replicated_from")
+        if isinstance(replicated_from, dict) and replicated_from:
+            note["replicated_from"] = replicated_from
         return json.dumps(note, ensure_ascii=False)
 
     def _note_owned_by_connector(self, note_value: Any) -> bool:

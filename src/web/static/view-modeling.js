@@ -19,6 +19,7 @@
     columnAggregations: {}, // { "table.column": "SUM" }
     activeWhereValue: null, // { rowIndex, input } currently focused value input
     tableAliasTarget: null, // canvas table alias being renamed
+    replicateViewId: null, // saved view selected for replication
     columnsCache: {},
     previewData: { columns: [], rows: [] },
   };
@@ -180,6 +181,11 @@
     bindControl('table-search', 'change', onTableSearchSelect);
     bindControl('view-search', 'input', filterViewList);
     bindControl('view-search', 'change', onViewSearchSelect);
+
+    bindControl('replicate-cancel', 'click', closeReplicateModal);
+    bindControl('replicate-run', 'click', runReplication);
+    const replicateBackdrop = $('#replicate-modal .modal-backdrop');
+    if (replicateBackdrop) replicateBackdrop.addEventListener('click', closeReplicateModal);
 
     bindControl('table-alias-cancel', 'click', closeTableAliasModal);
     bindControl('table-alias-save', 'click', saveTableAlias);
@@ -379,15 +385,24 @@
         <li data-id="${esc(v.ID || v.id || '')}" title="${esc((v.DefView || '').substring(0, 200))}">
           <div>
             <div>${esc(v.NazevSys || v.Nazev || t('unnamed_view_fallback'))}</div>
-            <div class="meta">${esc(v.Autor || 'view')} · ${esc(v.DatPorizeni || '')}</div>
+            <div class="meta">${esc(v.Autor || 'view')} · ${esc(v.DatPorizeni || '')}${isReplica(v) ? ' · ' + esc(t('replica_badge')) : ''}</div>
           </div>
-          <button type="button" class="btn small edit-view" data-id="${esc(v.ID || v.id || '')}">${esc(t('edit_view_button'))}</button>
+          <span class="view-list-actions">
+            <button type="button" class="btn small edit-view" data-id="${esc(v.ID || v.id || '')}">${esc(t('edit_view_button'))}</button>
+            <button type="button" class="btn small replicate-view" data-id="${esc(v.ID || v.id || '')}" title="${esc(t('replicate_view_title'))}">${esc(t('replicate_view_button'))}</button>
+          </span>
         </li>
       `).join('');
       list.querySelectorAll('.edit-view').forEach(btn => {
         btn.addEventListener('click', (e) => {
           e.stopPropagation();
           loadViewForEdit(parseInt(btn.dataset.id));
+        });
+      });
+      list.querySelectorAll('.replicate-view').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          openReplicateModal(parseInt(btn.dataset.id));
         });
       });
       populateDatalist(
@@ -704,6 +719,91 @@
     renderCustomColumns();
     if (state.tablesOnCanvas.length && state.tablesOnCanvas.some(t => t.columns.some(c => c.selected))) {
       previewView();
+    }
+  }
+
+  // ---------------------------------------------------------------
+  // Replicate modal (copy a saved view into other connectors' databases)
+  // ---------------------------------------------------------------
+  function isReplica(view) {
+    const note = (view && view.Poznamka) || '';
+    if (!note.trim().startsWith('{')) return false;
+    try {
+      return !!JSON.parse(note).replicated_from;
+    } catch (err) {
+      return false;
+    }
+  }
+
+  async function openReplicateModal(viewId) {
+    const view = state.savedViews.find(v => (v.ID || v.id) == viewId);
+    if (!view) return;
+    state.replicateViewId = viewId;
+    $('#replicate-view-name').textContent = t('replicate_modal_view_label', {
+      name: view.NazevSys || view.Nazev || t('unnamed_view_fallback'),
+    });
+    $('#replicate-overwrite').checked = false;
+    const results = $('#replicate-results');
+    results.innerHTML = '';
+    results.classList.add('hidden');
+    const targets = $('#replicate-targets');
+    targets.innerHTML = `<p class="empty-hint">${esc(t('replicate_loading_targets'))}</p>`;
+    $('#replicate-run').disabled = true;
+    $('#replicate-modal').classList.remove('hidden');
+    try {
+      const list = await api('GET', '/replication-targets');
+      if (!list.length) {
+        targets.innerHTML = `<p class="empty-hint">${esc(t('replicate_no_targets'))}</p>`;
+        return;
+      }
+      targets.innerHTML = list.map(c => `
+        <label class="replicate-target">
+          <input type="checkbox" value="${esc(c.id)}" />
+          <span>
+            <strong>${esc(c.name)}</strong>
+            <span class="meta">${esc(c.db_host)} / ${esc(c.db_name)}${c.is_own ? '' : ' · ' + esc(c.owner_email)}</span>
+          </span>
+        </label>
+      `).join('');
+      $('#replicate-run').disabled = false;
+    } catch (err) {
+      targets.innerHTML = `<p class="empty-hint">${esc(t('replicate_targets_load_error', { error: err.message }))}</p>`;
+    }
+  }
+
+  function closeReplicateModal() {
+    $('#replicate-modal').classList.add('hidden');
+    state.replicateViewId = null;
+  }
+
+  async function runReplication() {
+    const viewId = state.replicateViewId;
+    if (!viewId) return;
+    const ids = Array.from($$('#replicate-targets input[type="checkbox"]:checked')).map(el => parseInt(el.value));
+    if (!ids.length) {
+      alert(t('replicate_select_target_alert'));
+      return;
+    }
+    const runBtn = $('#replicate-run');
+    runBtn.disabled = true;
+    const results = $('#replicate-results');
+    results.classList.remove('hidden');
+    results.innerHTML = `<li>${esc(t('replicate_running'))}</li>`;
+    try {
+      const res = await api('POST', '/saved/' + viewId + '/replicate', {
+        target_connector_ids: ids,
+        overwrite: $('#replicate-overwrite').checked,
+      });
+      results.innerHTML = (res.results || []).map(r => `
+        <li class="replicate-result status-${esc(r.status)}">
+          <strong>${esc(r.connector_name)}</strong>: ${esc(t('replicate_status_' + r.status))}
+          ${r.message ? `<div class="meta">${esc(r.message)}</div>` : ''}
+        </li>
+      `).join('');
+    } catch (err) {
+      results.innerHTML = `<li class="replicate-result status-error">${esc(t('replicate_error_alert', { error: err.message }))}</li>`;
+    } finally {
+      runBtn.disabled = false;
     }
   }
 

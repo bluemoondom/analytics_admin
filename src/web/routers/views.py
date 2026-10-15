@@ -9,8 +9,13 @@ from fastapi import APIRouter, Depends, HTTPException
 from src.web.auth import require_user
 from src.web.config import get_settings
 from src.web.db import DatabaseError
-from src.web.models.user import Connector, User
+from src.web.models.user import Connector, User, UserRole
 from src.web.services.user_storage import UserStorage
+from src.web.services.view_replication import (
+    ReplicationError,
+    replicate_view,
+    replication_targets,
+)
 from src.web.services.view_modeling import (
     ViewModelingError,
     ViewModelingService,
@@ -152,6 +157,78 @@ def delete_saved_view(
     except DatabaseError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     return {"deleted": True}
+
+
+@router.get("/replication-targets", response_model=list[dict[str, Any]])
+def list_replication_targets(
+    user: Annotated[User, Depends(require_user)],
+    connector_id: int | None = None,
+):
+    """Return connectors a saved view can be replicated to.
+
+    Admins see connectors of all users, other users only their own.
+    """
+    source = _owned_connector(user, connector_id)
+    if source is None:
+        raise HTTPException(status_code=400, detail="Nemáte vybraný konektor.")
+    if user.role == UserRole.ADMIN:
+        owners = {u.id: u.email for u in UserStorage().list_users()}
+    else:
+        owners = {user.id: user.email}
+    return [
+        {
+            "id": c.id,
+            "name": c.name,
+            "db_type": c.db_type or "mssql",
+            "db_host": c.db_host,
+            "db_name": c.db_name,
+            "owner_email": owners.get(c.user_id, ""),
+            "is_own": c.user_id == user.id,
+        }
+        for c in replication_targets(user, source)
+    ]
+
+
+@router.post("/saved/{view_id}/replicate", response_model=dict[str, Any])
+def replicate_saved_view(
+    view_id: int,
+    payload: dict[str, Any],
+    user: Annotated[User, Depends(require_user)],
+):
+    """Copy a saved view into the databases of the selected connectors.
+
+    Payload: ``target_connector_ids`` (list of ids), optional ``connector_id``
+    of the source (defaults to the active connector) and ``overwrite`` to
+    replace same-named views in the target that are not copies of this view.
+    """
+    source = _owned_connector(user, payload.get("connector_id"))
+    if source is None:
+        raise HTTPException(status_code=400, detail="Nemáte vybraný konektor.")
+    raw_ids = payload.get("target_connector_ids") or []
+    try:
+        target_ids = list(dict.fromkeys(int(i) for i in raw_ids))
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="Neplatné ID konektoru.") from exc
+    if not target_ids:
+        raise HTTPException(status_code=400, detail="Vyberte alespoň jeden cílový konektor.")
+
+    allowed = {c.id: c for c in replication_targets(user, source)}
+    if any(i not in allowed for i in target_ids):
+        raise HTTPException(
+            status_code=403, detail="Na vybrané konektory nemáte oprávnění replikovat."
+        )
+    try:
+        results = replicate_view(
+            source,
+            view_id,
+            [allowed[i] for i in target_ids],
+            overwrite=bool(payload.get("overwrite")),
+        )
+    except ReplicationError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except DatabaseError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"view_id": view_id, "results": results}
 
 
 @router.get("/api-config", response_model=dict[str, str])

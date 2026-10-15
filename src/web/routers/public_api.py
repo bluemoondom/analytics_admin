@@ -103,7 +103,7 @@ class _IpBlocklist:
 
 
 class _FailureCounter:
-    """Track recent 403/404 failures per IP and trigger persistent blocks.
+    """Track recent 400/403/404 failures per IP and trigger persistent blocks.
 
     Failures are counted per IP in a sliding 1-minute window. When the count
     exceeds the configured threshold the IP is moved to the persistent blocklist.
@@ -122,7 +122,7 @@ class _FailureCounter:
         return now.replace(second=0, microsecond=0)
 
     def record(self, ip: str, when: dt.datetime | None = None) -> bool:
-        """Record a 403/404 failure. Return True if IP was just blocked."""
+        """Record a 400/403/404 failure. Return True if IP was just blocked."""
         ip = ip.strip()
         if not ip or self._threshold <= 0:
             return False
@@ -178,6 +178,29 @@ def _reset_blocklists() -> None:
     _blocklist_403_404 = None
     _blocklist_bad_key = None
     _failure_counter = None
+
+
+def _ensure_not_blocked(client_ip: str) -> None:
+    """Reject requests from IPs on any persistent blocklist with 403."""
+    blocklist_403_404, blocklist_bad_key, _ = _get_blocklists()
+    if client_ip in blocklist_403_404 or client_ip in blocklist_bad_key:
+        api_logger.warning("blocked IP %s", client_ip)
+        raise HTTPException(status_code=403, detail="Blocked")
+
+
+def _record_failure(client_ip: str) -> None:
+    """Count a 400/403/404 failure for the IP and log when it gets blocked."""
+    _, _, failure_counter = _get_blocklists()
+    if failure_counter.record(client_ip):
+        api_logger.warning(
+            "IP %s blocked after repeated 400/403/404 failures", client_ip
+        )
+
+
+def _bad_request(client_ip: str, detail: str) -> HTTPException:
+    """Record a 400 failure for the IP and return the exception to raise."""
+    _record_failure(client_ip)
+    return HTTPException(status_code=400, detail=detail)
 
 
 def _setup_logger() -> logging.Logger:
@@ -312,7 +335,7 @@ def _resolve_view_connector(
         )
         return connector, view, note
 
-    _, blocklist_bad_key, failure_counter = _get_blocklists()
+    _, blocklist_bad_key, _ = _get_blocklists()
 
     if not matched_key:
         api_logger.warning(
@@ -322,8 +345,7 @@ def _resolve_view_connector(
         raise HTTPException(status_code=401, detail="Unauthorized")
     if not ip_allowed:
         api_logger.warning("IP not allowed: %s", client_ip)
-        if failure_counter.record(client_ip):
-            api_logger.warning("IP %s blocked after repeated 403/404 failures", client_ip)
+        _record_failure(client_ip)
         raise HTTPException(status_code=403, detail="IP not allowed")
     if rate_limited:
         api_logger.warning("Rate limit exceeded for %s", client_ip)
@@ -332,8 +354,7 @@ def _resolve_view_connector(
     api_logger.warning(
         "No API-enabled view %s found for tenant=%s", view_name, tenant
     )
-    if failure_counter.record(client_ip):
-        api_logger.warning("IP %s blocked after repeated 403/404 failures", client_ip)
+    _record_failure(client_ip)
     raise HTTPException(status_code=404, detail="View not found")
 
 
@@ -439,10 +460,7 @@ async def public_view(tenant: str, view_name: str, request: Request):
     columns. Without a body the full view result is returned.
     """
     client_ip = _get_client_ip(request)
-    blocklist_403_404, blocklist_bad_key, _ = _get_blocklists()
-    if client_ip in blocklist_403_404 or client_ip in blocklist_bad_key:
-        api_logger.warning("blocked IP %s", client_ip)
-        raise HTTPException(status_code=403, detail="Blocked")
+    _ensure_not_blocked(client_ip)
 
     api_logger.info(
         "request tenant=%s view=%s method=%s ip=%s user_agent=%s",
@@ -561,8 +579,12 @@ def public_insert_view(
     Only views without joins, subviews, aggregations, group by or custom columns
     are accepted. The table used in the FROM clause is treated as the insert
     target.
+
+    Every 400 response counts towards the same per-IP failure limit as 403/404,
+    so repeated bad requests end with a persistent block.
     """
     client_ip = _get_client_ip(request)
+    _ensure_not_blocked(client_ip)
     api_logger.info(
         "insert request tenant=%s view=%s ip=%s user_agent=%s",
         tenant,
@@ -577,6 +599,7 @@ def public_insert_view(
         api_logger.warning(
             "PUT not enabled for view %s (connector_id=%s)", view_name, connector.id
         )
+        _record_failure(client_ip)
         raise HTTPException(status_code=404, detail="View not found")
 
     definition = view.get("DefView") or ""
@@ -586,11 +609,11 @@ def public_insert_view(
     simple, primary_table = _check_simple_insert_view(note, definition)
     if not simple:
         api_logger.warning("View %s is not eligible for insert: %s", view_name, primary_table)
-        raise HTTPException(status_code=400, detail=primary_table)
+        raise _bad_request(client_ip, primary_table)
 
     rows = (body or {}).get("rows")
     if not isinstance(rows, list) or not rows:
-        raise HTTPException(status_code=400, detail="Payload must contain a non-empty 'rows' list")
+        raise _bad_request(client_ip, "Payload must contain a non-empty 'rows' list")
 
     inserted = 0
     try:
@@ -612,10 +635,10 @@ def public_insert_view(
             conn.commit()
     except pyodbc.IntegrityError as exc:
         api_logger.warning("Integrity error inserting into %s: %s", primary_table, exc)
-        raise HTTPException(status_code=400, detail=f"Integrity error: {exc}") from exc
+        raise _bad_request(client_ip, f"Integrity error: {exc}") from exc
     except pyodbc.Error as exc:
         api_logger.error("Database error inserting into %s: %s", primary_table, exc)
-        raise HTTPException(status_code=400, detail=f"Insert failed: {exc}") from exc
+        raise _bad_request(client_ip, f"Insert failed: {exc}") from exc
 
     return {"inserted": inserted}
 
