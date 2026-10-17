@@ -172,16 +172,20 @@ Database changes are applied automatically on startup. The metadata database get
 
 ## Screenshots
 
-![Dashboard view](screen1.jpg)
+![Dashboard view](img/screen1.jpg)
 
-![Dashboard chart configuration](screen2.jpg)
+![Dashboard chart configuration](img/screen2.jpg)
 
-![View modeling canvas](screen3.jpg)
+![View modeling canvas](img/screen3.jpg)
 
-![Query conditions and generated SQL](screen4.jpg)
+![Query conditions and generated SQL](img/screen4.jpg)
 
-![Connector management](screen5.jpg)
+![Connector management](img/screen5.jpg)
 
-![Charts and table themes](screen6.jpg)
+![Charts and table themes](img/screen6.jpg)
+
+![Sharing a view: recipient check and share status](img/screen7.jpg)
+
+![Incoming shared view: preview before accepting](img/screen8.jpg)
 
 ---
