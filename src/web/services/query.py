@@ -10,6 +10,20 @@ from src.web.models.dashboard import Dashboard, DashboardKpiCard, DataQueryReque
 
 def discover_views(connector=None) -> list[dict[str, Any]]:
     """Return the list of available source views."""
+    from src.web.services.view_modeling import (
+        ViewModelingService,
+        is_analytics_admin_only,
+    )
+
+    if is_analytics_admin_only(connector):
+        # Show only views created/saved by this Analytics admin tool.
+        service = ViewModelingService(connector=connector)
+        rows = service.list_saved_views()
+        return [
+            {"system_name": row["NazevSys"], "display_name": row["NazevSys"]}
+            for row in rows
+            if row.get("NazevSys")
+        ]
     return list_views(connector=connector)
 
 

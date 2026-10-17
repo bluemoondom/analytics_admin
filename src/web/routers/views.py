@@ -11,14 +11,14 @@ from src.web.config import get_settings
 from src.web.db import DatabaseError
 from src.web.models.user import Connector, User, UserRole
 from src.web.services.user_storage import UserStorage
+from src.web.services.view_modeling import (
+    ViewModelingError,
+    ViewModelingService,
+)
 from src.web.services.view_replication import (
     ReplicationError,
     replicate_view,
     replication_targets,
-)
-from src.web.services.view_modeling import (
-    ViewModelingError,
-    ViewModelingService,
 )
 
 router = APIRouter(prefix="/api/views", tags=["views"])

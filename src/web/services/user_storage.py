@@ -63,6 +63,7 @@ class UserStorage:
                     db_password TEXT NOT NULL,
                     db_driver TEXT NOT NULL DEFAULT 'ODBC Driver 17 for SQL Server',
                     view_discovery_mode TEXT NOT NULL DEFAULT 'tabobecny_prehled',
+                    analytics_admin_views_only INTEGER,
                     api_tenant TEXT NOT NULL DEFAULT '',
                     api_key TEXT NOT NULL DEFAULT '',
                     api_key_header TEXT NOT NULL DEFAULT 'X-API-Key',
@@ -100,6 +101,10 @@ class UserStorage:
                 pass
             try:
                 conn.execute("ALTER TABLE connectors ADD COLUMN db_type TEXT NOT NULL DEFAULT 'mssql'")
+            except sqlite3.OperationalError:
+                pass
+            try:
+                conn.execute("ALTER TABLE connectors ADD COLUMN analytics_admin_views_only INTEGER")
             except sqlite3.OperationalError:
                 pass
             self._migrate_encrypt_secrets_sqlite(conn)
@@ -149,6 +154,7 @@ class UserStorage:
                     db_password NVARCHAR(255) NOT NULL,
                     db_driver NVARCHAR(100) NOT NULL DEFAULT 'ODBC Driver 17 for SQL Server',
                     view_discovery_mode NVARCHAR(50) NOT NULL DEFAULT 'tabobecny_prehled',
+                    analytics_admin_views_only BIT NULL,
                     api_tenant NVARCHAR(50) NOT NULL DEFAULT '',
                     api_key NVARCHAR(255) NOT NULL DEFAULT '',
                     api_key_header NVARCHAR(100) NOT NULL DEFAULT 'X-API-Key',
@@ -169,6 +175,12 @@ class UserStorage:
                 """
                 IF COL_LENGTH('connectors', 'db_type') IS NULL
                 ALTER TABLE connectors ADD db_type NVARCHAR(40) NOT NULL DEFAULT 'mssql'
+                """
+            )
+            cur.execute(
+                """
+                IF COL_LENGTH('connectors', 'analytics_admin_views_only') IS NULL
+                ALTER TABLE connectors ADD analytics_admin_views_only BIT NULL
                 """
             )
             cur.execute(
@@ -277,6 +289,11 @@ class UserStorage:
             db_password=decrypt(row["db_password"]),
             db_driver=row["db_driver"],
             view_discovery_mode=row["view_discovery_mode"],
+            analytics_admin_views_only=(
+                bool(row["analytics_admin_views_only"])
+                if "analytics_admin_views_only" in keys and row["analytics_admin_views_only"] is not None
+                else None
+            ),
             api_tenant=row["api_tenant"],
             api_key=decrypt(row["api_key"]),
             api_key_header=row["api_key_header"],
@@ -457,14 +474,18 @@ class UserStorage:
             cur = conn.execute(
                 """INSERT INTO connectors
                 (user_id, name, db_type, db_host, db_port, db_name, db_user, db_password, db_driver,
-                 view_discovery_mode, api_tenant, api_key, api_key_header,
+                 view_discovery_mode, analytics_admin_views_only, api_tenant, api_key, api_key_header,
                  api_allowed_ips, api_max_requests_per_minute, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     connector.user_id, connector.name, connector.db_type or "mssql",
                     connector.db_host, connector.db_port, connector.db_name,
                     connector.db_user, encrypt(connector.db_password), connector.db_driver,
-                    connector.view_discovery_mode, connector.api_tenant, encrypt(connector.api_key),
+                    connector.view_discovery_mode,
+                    1 if connector.analytics_admin_views_only is True else (
+                        0 if connector.analytics_admin_views_only is False else None
+                    ),
+                    connector.api_tenant, encrypt(connector.api_key),
                     connector.api_key_header, json.dumps(connector.api_allowed_ips),
                     connector.api_max_requests_per_minute, now, now,
                 ),
@@ -487,15 +508,17 @@ class UserStorage:
             cur.execute(
                 """INSERT INTO connectors
                 (user_id, name, db_type, db_host, db_port, db_name, db_user, db_password, db_driver,
-                 view_discovery_mode, api_tenant, api_key, api_key_header,
+                 view_discovery_mode, analytics_admin_views_only, api_tenant, api_key, api_key_header,
                  api_allowed_ips, api_max_requests_per_minute)
                 OUTPUT INSERTED.id
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
                 (
                     connector.user_id, connector.name, connector.db_type or "mssql",
                     connector.db_host, connector.db_port, connector.db_name,
                     connector.db_user, encrypt(connector.db_password), connector.db_driver,
-                    connector.view_discovery_mode, connector.api_tenant, encrypt(connector.api_key),
+                    connector.view_discovery_mode,
+                    connector.analytics_admin_views_only,
+                    connector.api_tenant, encrypt(connector.api_key),
                     connector.api_key_header, json.dumps(connector.api_allowed_ips),
                     connector.api_max_requests_per_minute,
                 ),
@@ -595,7 +618,7 @@ class UserStorage:
             conn.execute(
                 """UPDATE connectors SET
                     user_id = ?, name = ?, db_type = ?, db_host = ?, db_port = ?, db_name = ?, db_user = ?,
-                    db_password = ?, db_driver = ?, view_discovery_mode = ?,
+                    db_password = ?, db_driver = ?, view_discovery_mode = ?, analytics_admin_views_only = ?,
                     api_tenant = ?, api_key = ?, api_key_header = ?,
                     api_allowed_ips = ?, api_max_requests_per_minute = ?, updated_at = ?
                 WHERE id = ?""",
@@ -603,7 +626,11 @@ class UserStorage:
                     connector.user_id, connector.name, connector.db_type or "mssql",
                     connector.db_host, connector.db_port, connector.db_name,
                     connector.db_user, encrypt(connector.db_password), connector.db_driver,
-                    connector.view_discovery_mode, connector.api_tenant, encrypt(connector.api_key),
+                    connector.view_discovery_mode,
+                    1 if connector.analytics_admin_views_only is True else (
+                        0 if connector.analytics_admin_views_only is False else None
+                    ),
+                    connector.api_tenant, encrypt(connector.api_key),
                     connector.api_key_header, json.dumps(connector.api_allowed_ips),
                     connector.api_max_requests_per_minute, now, connector.id,
                 ),
@@ -625,7 +652,7 @@ class UserStorage:
             cur.execute(
                 """UPDATE connectors SET
                     user_id = %s, name = %s, db_type = %s, db_host = %s, db_port = %s, db_name = %s, db_user = %s,
-                    db_password = %s, db_driver = %s, view_discovery_mode = %s,
+                    db_password = %s, db_driver = %s, view_discovery_mode = %s, analytics_admin_views_only = %s,
                     api_tenant = %s, api_key = %s, api_key_header = %s,
                     api_allowed_ips = %s, api_max_requests_per_minute = %s, updated_at = GETUTCDATE()
                 WHERE id = %s""",
@@ -633,7 +660,8 @@ class UserStorage:
                     connector.user_id, connector.name, connector.db_type or "mssql",
                     connector.db_host, connector.db_port, connector.db_name,
                     connector.db_user, encrypt(connector.db_password), connector.db_driver,
-                    connector.view_discovery_mode, connector.api_tenant, encrypt(connector.api_key),
+                    connector.view_discovery_mode, connector.analytics_admin_views_only,
+                    connector.api_tenant, encrypt(connector.api_key),
                     connector.api_key_header, json.dumps(connector.api_allowed_ips),
                     connector.api_max_requests_per_minute, connector.id,
                 ),

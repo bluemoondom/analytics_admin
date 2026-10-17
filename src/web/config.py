@@ -65,6 +65,10 @@ class Settings:
 
         # How to discover the list of available views.
         self.VIEW_DISCOVERY_MODE: str = os.getenv("VIEW_DISCOVERY_MODE", "tabobecny_prehled")
+        # When True, view pickers only show views created/saved by this admin tool.
+        self.ANALYTICS_ADMIN_VIEWS_ONLY_DEFAULT: bool = os.getenv(
+            "ANALYTICS_ADMIN_VIEWS_ONLY_DEFAULT", "true"
+        ).lower() in ("1", "true", "yes")
 
         self.APP_TITLE: str = os.getenv("APP_TITLE", "Analytics admin")
         self.PAGE_SIZE: int = int(os.getenv("PAGE_SIZE", "500"))

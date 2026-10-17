@@ -17,6 +17,18 @@ from src.web.db import (
 )
 
 
+def is_analytics_admin_only(connector) -> bool:
+    """Return True when view pickers should show only views saved by this admin tool.
+
+    The per-connector flag takes precedence; when unset the global default from
+    the environment is used. This keeps backwards compatibility while letting
+    individual connectors opt in or out.
+    """
+    if connector is not None and getattr(connector, "analytics_admin_views_only", None) is not None:
+        return bool(connector.analytics_admin_views_only)
+    return get_settings().ANALYTICS_ADMIN_VIEWS_ONLY_DEFAULT
+
+
 @contextlib.contextmanager
 def _conn_with_cursor(connector=None):
     """Yield ``(conn, cursor)`` handling driver-specific cursor cleanup.
@@ -1842,9 +1854,11 @@ class ViewModelingService:
         note = self._decode_view_note(note_value or "")
         note_connector_id = note.get("connector_id")
         if note_connector_id is None:
-            # Legacy views without connector_id are visible to all connectors
-            # using the same DB user for backwards compatibility.
-            return True
+            # In strict mode we only want views created by this admin tool,
+            # so legacy rows without a connector_id are hidden. Otherwise keep
+            # backwards compatibility and show them to all connectors using the
+            # same DB user.
+            return not is_analytics_admin_only(self.connector)
         return note_connector_id == self._connector_id()
 
     def _next_cislo(self) -> int:

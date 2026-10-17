@@ -387,6 +387,7 @@
   "connector_db_password_label": "Mot de passe",
   "connector_db_driver_label": "Pilote",
   "connector_view_mode_label": "Mode de découverte des views",
+  "connector_analytics_admin_only_label": "Uniquement les views de Analytics admin",
   "connector_api_tenant_label": "Tenant API",
   "connector_api_key_label": "Clé API",
   "connector_api_key_header_label": "Nom de l'en-tête de clé API",
