@@ -7,9 +7,13 @@
   <title>{{ title }}</title>
   <link rel="stylesheet" href="/static/app.css">
   <link rel="stylesheet" href="/static/user-menu.css">
+  <link rel="stylesheet" href="/static/sidebar.css">
 </head>
 <body>
   {% block body %}{% endblock %}
+
+  <!-- Loaded before CDN scripts so the remembered sidebar width applies right away. -->
+  <script src="/static/sidebar.js"></script>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>

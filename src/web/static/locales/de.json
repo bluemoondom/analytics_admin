@@ -438,5 +438,9 @@
   "replicate_status_updated": "aktualisiert",
   "replicate_status_conflict": "Namenskonflikt",
   "replicate_status_skipped": "übersprungen",
-  "replicate_status_error": "Fehler"
+  "replicate_status_error": "Fehler",
+  "logout_button": "Abmelden",
+  "sidebar_search_placeholder": "Suchen…",
+  "sidebar_main_menu_label": "Hauptmenü",
+  "sidebar_resize_handle_title": "Ziehen zum Ändern der Breite, Doppelklick zum Zurücksetzen"
 }

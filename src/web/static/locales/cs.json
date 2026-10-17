@@ -438,5 +438,9 @@
   "replicate_status_updated": "aktualizováno",
   "replicate_status_conflict": "konflikt názvu",
   "replicate_status_skipped": "přeskočeno",
-  "replicate_status_error": "chyba"
+  "replicate_status_error": "chyba",
+  "logout_button": "Odhlásit",
+  "sidebar_search_placeholder": "Hledat…",
+  "sidebar_main_menu_label": "Hlavní menu",
+  "sidebar_resize_handle_title": "Tažením změňte šířku, dvojklikem obnovíte výchozí"
 }

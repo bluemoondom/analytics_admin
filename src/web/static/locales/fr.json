@@ -438,5 +438,9 @@
   "replicate_status_updated": "mise à jour",
   "replicate_status_conflict": "conflit de nom",
   "replicate_status_skipped": "ignorée",
-  "replicate_status_error": "erreur"
+  "replicate_status_error": "erreur",
+  "logout_button": "Se déconnecter",
+  "sidebar_search_placeholder": "Rechercher…",
+  "sidebar_main_menu_label": "Menu principal",
+  "sidebar_resize_handle_title": "Glisser pour redimensionner, double-clic pour réinitialiser"
 }

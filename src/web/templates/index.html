@@ -1,27 +1,60 @@
 {% extends "base.html" %}
 {% block body %}
 <main class="layout">
-  <aside class="sidebar">
+  <aside class="sidebar sidebar-modern">
     <div class="app-header">
       <div class="app-logo">
-        <img src="/static/icons/bar.svg" alt="Analytics admin" />
+        <span class="app-logo-mark"><img src="/static/icons/bar.svg" alt="" /></span>
         <h1>{{ title }}</h1>
       </div>
     </div>
 
-    <div class="user-section" id="user-section">
-      <button class="user-trigger" id="user-trigger" type="button" aria-expanded="false">
-        <img src="/static/icons/user.svg" alt="" class="user-icon" />
-        <span class="user-email">{{ user.email }}</span>
-      </button>
-      <div class="user-dropdown" id="user-dropdown">
-        <button type="button" id="logout-button" class="logout-item">
-          <img src="/static/icons/logout.svg" alt="" class="logout-icon" />
-          <span data-i18n="logout_button">Odhlásit</span>
-        </button>
+    <nav class="top-menu side-nav" data-i18n="sidebar_main_menu_label" data-i18n-attr="aria-label" aria-label="Hlavní menu">
+      <button id="menu-dashboards" type="button" class="nav-item primary active"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg><span data-i18n="menu_dashboards">Dashboardy</span></button>
+      <button id="menu-view-modeling" type="button" class="nav-item"><svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="5.5" rx="8" ry="3"/><path d="M4 5.5v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/><path d="M4 11.5v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg><span data-i18n="menu_view_modeling">Modelování views</span></button>
+      <button id="menu-connectors" type="button" class="nav-item"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 7V3M15 7V3"/><rect x="6" y="7" width="12" height="6" rx="2"/><path d="M12 13v3a4 4 0 0 1-4 4H6"/></svg><span data-i18n="menu_connectors">Konektory</span></button>
+    </nav>
+
+    <div class="sidebar-scroll">
+    <section id="dashboard-menu-section" class="nav-section">
+      <div class="nav-section-head">
+        <h2><span data-i18n="saved_dashboards_heading">Uložené dashboardy</span> <span class="nav-count" data-count-for="dashboard-list"></span></h2>
+        <button id="new-dashboard" class="nav-add" type="button" data-i18n="new_dashboard_button" data-i18n-attr="title" title="Nový dashboard"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span class="sr-only" data-i18n="new_dashboard_button">Nový dashboard</span></button>
       </div>
+      <label class="nav-search">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></svg>
+        <input type="search" data-filter-list="dashboard-list" data-i18n="sidebar_search_placeholder" data-i18n-attr="aria-label" data-i18n-placeholder="sidebar_search_placeholder" placeholder="Hledat…" aria-label="Hledat" />
+      </label>
+      <ul id="dashboard-list" class="dashboard-list nav-list"></ul>
+    </section>
+
+    <section id="view-menu-section" class="nav-section hidden">
+      <div class="nav-section-head">
+        <h2><span data-i18n="saved_views_heading">Uložené views</span> <span class="nav-count" data-count-for="view-list"></span></h2>
+        <button id="new-view" class="nav-add" type="button" data-i18n="new_view_button" data-i18n-attr="title" title="Nový view"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span class="sr-only" data-i18n="new_view_button">Nový view</span></button>
+      </div>
+      <label class="nav-search">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></svg>
+        <input type="search" data-filter-list="view-list" data-i18n="sidebar_search_placeholder" data-i18n-attr="aria-label" data-i18n-placeholder="sidebar_search_placeholder" placeholder="Hledat…" aria-label="Hledat" />
+      </label>
+      <ul id="view-list" class="dashboard-list nav-list"></ul>
+    </section>
+
+    <section id="connectors-menu-section" class="nav-section hidden">
+      <div class="nav-section-head">
+        <h2><span data-i18n="saved_connectors_heading">Konektory</span> <span class="nav-count" data-count-for="connector-list"></span></h2>
+        <button id="new-connector" class="nav-add" type="button" data-i18n="new_connector_button" data-i18n-attr="title" title="Nový konektor"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span class="sr-only" data-i18n="new_connector_button">Nový konektor</span></button>
+      </div>
+      <label class="nav-search">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></svg>
+        <input type="search" data-filter-list="connector-list" data-i18n="sidebar_search_placeholder" data-i18n-attr="aria-label" data-i18n-placeholder="sidebar_search_placeholder" placeholder="Hledat…" aria-label="Hledat" />
+      </label>
+      <ul id="connector-list" class="dashboard-list nav-list"></ul>
+    </section>
     </div>
 
+    <footer class="sidebar-footer">
+      <div class="sidebar-prefs">
     <div class="lang-switcher custom-select" id="lang-switcher">
       <div class="custom-select-trigger" id="lang-switcher-trigger">
         <img src="/static/icons/flag-en.svg" alt="" class="flag-icon" />
@@ -46,7 +79,6 @@
         </div>
       </div>
     </div>
-
     <div class="background-theme-switcher" id="background-theme-switcher">
       <button type="button" class="background-theme-trigger" id="background-theme-trigger" aria-haspopup="listbox" aria-expanded="false">
         <span class="theme-swatch" style="background:#ffffff"></span>
@@ -104,30 +136,22 @@
         </div>
       </div>
     </div>
-
-    <nav class="top-menu">
-      <button id="menu-dashboards" class="btn primary active" data-i18n="menu_dashboards">Dashboardy</button>
-      <button id="menu-view-modeling" class="btn" data-i18n="menu_view_modeling">Modelování views</button>
-      <button id="menu-connectors" class="btn" data-i18n="menu_connectors">Konektory</button>
-    </nav>
-
-    <section id="dashboard-menu-section">
-      <button id="new-dashboard" class="btn primary"><img src="/static/icons/plus.svg" alt="" class="btn-icon" /> <span data-i18n="new_dashboard_button">Nový dashboard</span></button>
-      <h2 data-i18n="saved_dashboards_heading">Uložené dashboardy</h2>
-      <ul id="dashboard-list" class="dashboard-list"></ul>
-    </section>
-
-    <section id="view-menu-section" class="hidden">
-      <button id="new-view" class="btn primary"><img src="/static/icons/plus.svg" alt="" class="btn-icon" /> <span data-i18n="new_view_button">Nový view</span></button>
-      <h2 data-i18n="saved_views_heading">Uložené views</h2>
-      <ul id="view-list" class="dashboard-list"></ul>
-    </section>
-
-    <section id="connectors-menu-section" class="hidden">
-      <button id="new-connector" class="btn primary"><img src="/static/icons/plus.svg" alt="" class="btn-icon" /> <span data-i18n="new_connector_button">Nový konektor</span></button>
-      <h2 data-i18n="saved_connectors_heading">Konektory</h2>
-      <ul id="connector-list" class="dashboard-list"></ul>
-    </section>
+      </div>
+    <div class="user-section" id="user-section">
+      <button class="user-trigger" id="user-trigger" type="button" aria-expanded="false">
+        <img src="/static/icons/user.svg" alt="" class="user-icon" />
+        <span class="user-email">{{ user.email }}</span>
+      </button>
+      <div class="user-dropdown" id="user-dropdown">
+        <button type="button" id="logout-button" class="logout-item">
+          <img src="/static/icons/logout.svg" alt="" class="logout-icon" />
+          <span data-i18n="logout_button">Odhlásit</span>
+        </button>
+      </div>
+    </div>
+    </footer>
+    <div class="sidebar-resizer" id="sidebar-resizer" role="separator" aria-orientation="vertical" tabindex="0"
+         data-i18n="sidebar_resize_handle_title" data-i18n-attr="title" title="Tažením změňte šířku, dvojklikem obnovíte výchozí"></div>
   </aside>
 
   <section class="workspace" id="workspace">

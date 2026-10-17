@@ -456,6 +456,7 @@
     }
     bindEvents();
     bindMenuSwitch();
+    window.addEventListener('analytics:views-changed', reloadViewsQuietly);
     console.log('app.js init end');
   }
 
@@ -509,17 +510,22 @@
         container.classList.remove('open');
       }
     });
+    function chooseLanguage(language) {
+      if (window.I18n) window.I18n.setLanguage(language);
+      // The open state lives on the container; closing only the list left the
+      // menu hanging over the controls below it.
+      container.classList.remove('open');
+      options.classList.remove('open');
+    }
     options.querySelectorAll('.custom-select-option').forEach(opt => {
       opt.addEventListener('click', (e) => {
         e.stopPropagation();
-        if (window.I18n) window.I18n.setLanguage(opt.dataset.lang);
-        options.classList.remove('open');
+        chooseLanguage(opt.dataset.lang);
       });
       opt.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
-          if (window.I18n) window.I18n.setLanguage(opt.dataset.lang);
-          options.classList.remove('open');
+          chooseLanguage(opt.dataset.lang);
         }
       });
     });
@@ -638,6 +644,8 @@
   }
 
   function showDashboardSection() {
+    // Views may have been created, renamed or deleted in View modeling meanwhile.
+    reloadViewsQuietly();
     const dashBtn = $('#menu-dashboards');
     const viewBtn = $('#menu-view-modeling');
     const connBtn = $('#menu-connectors');
@@ -818,6 +826,8 @@
       updateTrigger();
     });
 
+    // Labels are built with t(); refresh them once translations load or change.
+    if (window.I18n) window.I18n.onChange(() => updateTrigger());
     updateTrigger();
   }
 
@@ -928,6 +938,8 @@
       }
     });
 
+    // Labels are built with t(); refresh them once translations load or change.
+    if (window.I18n) window.I18n.onChange(() => updateTrigger());
     updateTrigger();
   }
 
@@ -1011,6 +1023,8 @@
       applyTableTheme();
     });
 
+    // Labels are built with t(); refresh them once translations load or change.
+    if (window.I18n) window.I18n.onChange(() => updateTrigger());
     updateTrigger();
   }
 
@@ -1075,10 +1089,22 @@
   // Data loading
   // ------------------------------------------------------------------
   async function loadViews() {
-    state.views = await api('GET', '/views');
+    const views = await api('GET', '/views');
+    state.views = views;
     const sel = $('#view-select');
-    sel.innerHTML = '<option value="">' + esc(t('view_select_placeholder')) + '</option>' +
-      state.views.map(v => `<option value="${esc(v.system_name)}">${esc(v.display_name)}</option>`).join('');
+    // Read the selection after the fetch so a dashboard opened meanwhile keeps its view.
+    const current = sel.value;
+    const options = views.map(v => `<option value="${esc(v.system_name)}">${esc(v.display_name)}</option>`);
+    if (current && !views.some(v => v.system_name === current)) {
+      // The open dashboard's view is no longer listed; keep it selectable instead of clearing it.
+      options.push(`<option value="${esc(current)}">${esc(current)}</option>`);
+    }
+    sel.innerHTML = '<option value="">' + esc(t('view_select_placeholder')) + '</option>' + options.join('');
+    sel.value = current;
+  }
+
+  function reloadViewsQuietly() {
+    loadViews().catch(err => console.error('Failed to reload views', err));
   }
 
   async function loadDashboards() {
@@ -1245,9 +1271,9 @@
       dash.aggregations[c.name] = storedAggs[c.name] || '';
     });
     if (storedVisible.size > 0) {
-      dash.visible_columns = state.columns
-        .map(c => c.name)
-        .filter(name => storedVisible.has(name));
+      // Keep the user-defined column order; drop columns that no longer exist in the view.
+      const existing = new Set(state.columns.map(c => c.name));
+      dash.visible_columns = [...storedVisible].filter(name => existing.has(name));
     }
     // Ensure active dimensions are visible.
     (dash.dimension_columns || []).forEach(col => {
@@ -1282,7 +1308,9 @@
     const dash = state.currentDashboard;
     const visibleSet = new Set(dash.visible_columns || []);
     const sourceCols = state.columns.map(c => enrichColumn(c));
-    const visibleCols = sourceCols.filter(c => visibleSet.has(c.name));
+    // Visible columns follow dash.visible_columns, which is the column order of the table.
+    const byName = new Map(sourceCols.map(c => [c.name, c]));
+    const visibleCols = (dash.visible_columns || []).map(name => byName.get(name)).filter(Boolean);
     const hiddenCols = sourceCols.filter(c => !visibleSet.has(c.name));
 
     const sourceContainer = $('#source-list');
@@ -1292,7 +1320,7 @@
 
     const hiddenContainer = $('#hidden-list');
     if (hiddenContainer) {
-      hiddenContainer.innerHTML = hiddenCols.map((c, idx) => renderSourceItem(c, idx, hiddenCols.length)).join('') || '<p class="empty-hint">' + esc(t('no_hidden_columns_hint')) + '</p>';
+      hiddenContainer.innerHTML = hiddenCols.map((c, idx) => renderSourceItem(c, idx, hiddenCols.length, false)).join('') || '<p class="empty-hint">' + esc(t('no_hidden_columns_hint')) + '</p>';
       bindSourceItemEvents(hiddenContainer);
       setupSourceReorderDrop(hiddenContainer);
     }
@@ -1344,8 +1372,12 @@
     return col.raw_type || col.type || '';
   }
 
-  function renderSourceItem(c, idx, total) {
+  function renderSourceItem(c, idx, total, reorderable = true) {
     const display = c.alias || c.name;
+    const reorderButtons = reorderable
+      ? `<button type="button" class="reorder-btn up" title="${esc(t('move_up_tooltip'))}" ${idx === 0 ? 'disabled' : ''}>▲</button>
+        <button type="button" class="reorder-btn down" title="${esc(t('move_down_tooltip'))}" ${idx === total - 1 ? 'disabled' : ''}>▼</button>`
+      : '';
     return `
       <div class="field-item ${c.visible ? '' : 'disabled'}" data-col="${esc(c.name)}" data-index="${idx}">
         <span class="field-visibility" title="${esc(c.visible ? t('hide_in_table_tooltip') : t('show_in_table_tooltip'))}">${c.visible ? '&#9670;' : '&#9671;'}</span>
@@ -1354,8 +1386,7 @@
         <button type="button" class="field-action dim" title="${esc(t('move_to_dimension_tooltip'))}">${esc(t('move_to_dimension_button'))}</button>
         <button type="button" class="field-action measure" title="${esc(t('move_to_measure_tooltip'))}">${esc(t('move_to_measure_button'))}</button>
         <button type="button" class="field-alias" title="${esc(t('rename_for_display_tooltip'))}">✎</button>
-        <button type="button" class="reorder-btn up" title="${esc(t('move_up_tooltip'))}" ${idx === 0 ? 'disabled' : ''}>▲</button>
-        <button type="button" class="reorder-btn down" title="${esc(t('move_down_tooltip'))}" ${idx === total - 1 ? 'disabled' : ''}>▼</button>
+        ${reorderButtons}
         <span class="drag-handle" draggable="true" title="${esc(t('drag_to_reorder_tooltip'))}">☰</span>
       </div>`;
   }
@@ -1459,7 +1490,7 @@
 
   function reorderVisible(col, delta) {
     const dash = state.currentDashboard;
-    const order = dash.visible_columns.length ? dash.visible_columns : state.columns.map(c => c.name);
+    const order = [...(dash.visible_columns || [])];
     const idx = order.indexOf(col);
     if (idx < 0) return;
     const newIdx = Math.max(0, Math.min(order.length - 1, idx + delta));
@@ -1607,6 +1638,12 @@
         dash.visible_columns = (dash.visible_columns || []).filter(name => name !== col);
       } else {
         const visible = [...container.querySelectorAll('.field-item')].map(el => el.dataset.col);
+        if (!visible.includes(col)) {
+          // Item came from another list and was not moved into this DOM during dragover.
+          const after = getDragAfterElement(container, e.clientY);
+          const pos = after ? visible.indexOf(after.dataset.col) : -1;
+          visible.splice(pos >= 0 ? pos : visible.length, 0, col);
+        }
         dash.visible_columns = visible;
       }
       const payload = { ...dash, filters: collectFilters(), charts: collectCharts() };
@@ -1684,9 +1721,8 @@
     // When moving the first explicit dimension, preserve all visible non-aggregated
     // columns as dimensions so the table keeps showing them in the right order.
     if (!dash.dimension_columns.length) {
-      const newDims = state.columns
-        .map(c => c.name)
-        .filter(name => name !== col && dash.visible_columns.includes(name) && !dash.aggregations[name]);
+      const newDims = dash.visible_columns
+        .filter(name => name !== col && !dash.aggregations[name]);
       dash.dimension_columns = newDims;
     }
     if (!dash.dimension_columns.includes(col)) dash.dimension_columns.push(col);

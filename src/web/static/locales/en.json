@@ -438,5 +438,9 @@
   "replicate_status_updated": "updated",
   "replicate_status_conflict": "name conflict",
   "replicate_status_skipped": "skipped",
-  "replicate_status_error": "error"
+  "replicate_status_error": "error",
+  "logout_button": "Log out",
+  "sidebar_search_placeholder": "Search…",
+  "sidebar_main_menu_label": "Main menu",
+  "sidebar_resize_handle_title": "Drag to resize, double-click to reset"
 }

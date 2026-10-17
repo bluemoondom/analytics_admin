@@ -27,6 +27,11 @@
   const $ = (sel) => document.querySelector(sel);
   const $$ = (sel) => document.querySelectorAll(sel);
 
+  function notifyViewsChanged() {
+    // Lets the dashboard builder refresh its View/Table list without a page reload.
+    window.dispatchEvent(new CustomEvent('analytics:views-changed'));
+  }
+
   async function api(method, path, body) {
     const opts = { method, headers: {} };
     if (body) {
@@ -794,6 +799,7 @@
         target_connector_ids: ids,
         overwrite: $('#replicate-overwrite').checked,
       });
+      notifyViewsChanged();
       results.innerHTML = (res.results || []).map(r => `
         <li class="replicate-result status-${esc(r.status)}">
           <strong>${esc(r.connector_name)}</strong>: ${esc(t('replicate_status_' + r.status))}
@@ -1450,6 +1456,7 @@
         renderConnectorSelect();
         alert(t('view_saved_success_alert', { name: result.name }));
         loadSavedViews();
+        notifyViewsChanged();
       } else {
         alert(result.reason || t('view_save_failed_alert'));
       }
@@ -1842,6 +1849,7 @@
     try {
       await api('DELETE', '/saved/' + state.viewId);
       alert(t('delete_view_success_alert'));
+      notifyViewsChanged();
       state.viewId = null;
       loadSavedViews();
       newView();
