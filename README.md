@@ -14,11 +14,13 @@ Analytics Admin is a multi-user business intelligence platform that allows organ
 - Support for numeric and date/time formatting
 - Configurable row limits
 - Automatic detection of data types to generate appropriate filtering conditions for a view
+- Column order defined in the dashboard settings (**Columns** list, up/down arrows or drag and drop) is applied to the table and saved with the dashboard
+- The **View/Table** picker refreshes automatically whenever a view is saved, deleted or shared, without reloading the page
 
 ### Pivot Tables
 
 - Creation of pivot (cross-tabulated) tables
-- Column hiding and reordering
+- Column hiding and reordering; pivot dimensions keep the order defined under **Dimensions**, while measures and other columns follow the order of the **Columns** list
 - Configuration of pivot dimensions and aggregation functions: Sum, Count, Average, Maximum, and Minimum
 - Display of columns that are neither assigned as dimensions nor as metrics
 
@@ -55,6 +57,20 @@ The view modeling layer allows users to define reusable data structures on top o
 - Automatic SQL query generation with syntax highlighting
 - Live data preview
 
+### View Sharing
+
+Views can be shared with other users and connectors, including connectors pointing to a different database.
+
+- Only the author of a view (the owner of the connector it was saved through) can share it
+- Sharing uses the recipient connector's **share code**: the recipient copies it from the connector details and sends it to the author; the author verifies who the code belongs to before sending the invitation
+- The recipient sees pending invitations in **View modeling** (with a badge in the menu), previews the view (tables, columns and SQL) and accepts or declines it
+- **Same database**: the recipient gets access to the author's view; no copy is created. The database is recognised by looking up the author's view through the recipient's connector, regardless of how the server name is written
+- **Different database**: the view is rebuilt and test-run in the recipient's database first; missing tables, columns or permissions are reported and nothing is written. On success a read-only copy is stored in the recipient's `TabObecnyPrehled`
+- Shared views are read-only for recipients: they cannot be edited, deleted, overwritten by saving under the same name, or shared further
+- When the author saves a new version, recipients in the same database see it immediately; recipients with a copy are offered the update and can accept it or keep the current version
+- The author sees the status of every share (waiting, accepted, error) and can revoke it; recipients can remove a shared view from their list. In both cases the view is only hidden, copies are not deleted from the recipient's database
+- Shared views appear in the recipient's dashboards and can be exposed through the recipient's own public API (read-only, see Security)
+
 ---
 
 ## Database Connectors
@@ -64,6 +80,7 @@ The view modeling layer allows users to define reusable data structures on top o
 - API authentication via bearer key, with a configurable custom header name
 - API tenant identifier for connector-level access control
 - Configurable maximum request rate (requests per minute)
+- Unique share code (UUID) per connector for receiving shared views, with copy-to-clipboard and regeneration; a new code invalidates the old one while shares already accepted remain
 
 ---
 
@@ -79,14 +96,28 @@ The view modeling layer allows users to define reusable data structures on top o
 - Configurable maximum request rate (requests per minute)
 - Registration and authentication via email, with session validity limited by a defined time period
 - Prevention of duplicate concurrent sessions
+- Automatic IP blocking on the public API: an invalid API key blocks the client IP immediately, and repeated `400 Bad Request`, `403` or `404` responses within a short time window lead to a persistent block (threshold set by `API_BLOCKLIST_403_404_THRESHOLD`)
+- Shared views are served through the recipient connector's own API tenant and key; keys are never shared between connectors, and writing (PUT) through a shared view is reserved for its author
 
 ---
 
 ## Multi-User Architecture
 
 - Multi-user environment with separated connectors, views, and dashboards per user
+- Controlled sharing of views between users and connectors (see View Sharing)
 - Account registration and authentication handled exclusively through email
-- Multi-language interface support
+- Multi-language interface: Czech, English, German and French
+
+---
+
+## User Interface
+
+- Sidebar with icon navigation (Dashboards, View modeling, Connectors) and item counts for each list
+- Search field that filters dashboards, views and connectors while typing
+- Language, background theme and account menu grouped at the bottom of the sidebar
+- Resizable sidebar: drag its right edge (or use the arrow keys); the width is remembered per browser and a double-click restores the default
+- Row actions (Edit, Share, View) appear on hover so item names use the full width
+- Dark background theme support for all sidebar and sharing dialogs
 
 ---
 
@@ -97,6 +128,8 @@ The application is started with the following command:
 ```
 python -m src.web.server
 ```
+
+Database changes are applied automatically on startup. The metadata database gets the `view_shares` table and a `share_uuid` column on `connectors` (existing connectors receive a code automatically), so the database user needs permission to create and alter tables.
 
 ### Dependencies
 

@@ -11,7 +11,7 @@
 
     <nav class="top-menu side-nav" data-i18n="sidebar_main_menu_label" data-i18n-attr="aria-label" aria-label="Hlavní menu">
       <button id="menu-dashboards" type="button" class="nav-item primary active"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg><span data-i18n="menu_dashboards">Dashboardy</span></button>
-      <button id="menu-view-modeling" type="button" class="nav-item"><svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="5.5" rx="8" ry="3"/><path d="M4 5.5v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/><path d="M4 11.5v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg><span data-i18n="menu_view_modeling">Modelování views</span></button>
+      <button id="menu-view-modeling" type="button" class="nav-item"><svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="5.5" rx="8" ry="3"/><path d="M4 5.5v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/><path d="M4 11.5v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg><span data-i18n="menu_view_modeling">Modelování views</span><span class="nav-badge hidden" id="incoming-share-badge" aria-live="polite"></span></button>
       <button id="menu-connectors" type="button" class="nav-item"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 7V3M15 7V3"/><rect x="6" y="7" width="12" height="6" rx="2"/><path d="M12 13v3a4 4 0 0 1-4 4H6"/></svg><span data-i18n="menu_connectors">Konektory</span></button>
     </nav>
 
@@ -37,6 +37,10 @@
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></svg>
         <input type="search" data-filter-list="view-list" data-i18n="sidebar_search_placeholder" data-i18n-attr="aria-label" data-i18n-placeholder="sidebar_search_placeholder" placeholder="Hledat…" aria-label="Hledat" />
       </label>
+      <div id="incoming-shares" class="incoming-shares hidden">
+        <h3 class="incoming-heading"><span data-i18n="incoming_shares_heading">Čeká na přijetí</span> <span class="nav-count" id="incoming-share-count"></span></h3>
+        <ul id="incoming-share-list" class="dashboard-list nav-list incoming-list"></ul>
+      </div>
       <ul id="view-list" class="dashboard-list nav-list"></ul>
     </section>
 
@@ -672,6 +676,17 @@
             <input id="connector-name" type="text" data-i18n-placeholder="connector_name_placeholder" placeholder="např. Maister produkce" />
           </label>
         </div>
+        <div class="form-row share-code-row hidden" id="connector-share-code-row">
+          <div class="full-width share-code-field">
+            <span class="share-code-label" data-i18n="connector_share_code_label">Kód pro sdílení views</span>
+            <div class="share-code-box">
+              <code id="connector-share-code"></code>
+              <button type="button" class="btn small" id="copy-share-code" data-i18n="connector_share_code_copy">Kopírovat</button>
+              <button type="button" class="btn small" id="regenerate-share-code" data-i18n="connector_share_code_regenerate">Nový kód</button>
+            </div>
+            <span class="hint" data-i18n="connector_share_code_hint">Pošlete tento kód autorovi view. Podle něj vám může view nasdílet na tento konektor.</span>
+          </div>
+        </div>
         <div class="form-row compact">
           <label><span data-i18n="connector_db_type_label">Typ databáze</span>
             <select id="connector-db-type">
@@ -772,21 +787,54 @@
   </div>
 </div>
 
-  <!-- Modal for replicating a saved view to other connectors -->
-<div id="replicate-modal" class="modal hidden">
+  <!-- Modal for sharing a saved view (author) -->
+<div id="share-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="share-modal-title">
   <div class="modal-backdrop"></div>
-  <div class="modal-content replicate-modal-content">
-    <h4 data-i18n="replicate_modal_title">Replikovat view</h4>
-    <p id="replicate-view-name"></p>
-    <div id="replicate-targets" class="replicate-targets"></div>
-    <label class="replicate-overwrite">
-      <input id="replicate-overwrite" type="checkbox" />
-      <span data-i18n="replicate_overwrite_label">Přepsat view se stejným názvem, které není kopií</span>
-    </label>
-    <ul id="replicate-results" class="replicate-results hidden"></ul>
+  <div class="modal-content share-modal-content">
+    <h4 id="share-modal-title" data-i18n="share_modal_title">Sdílet view</h4>
+    <p id="share-view-name" class="share-subtitle"></p>
+    <label for="share-code" class="share-field-label" data-i18n="share_code_label">Kód konektoru příjemce</label>
+    <div class="share-code-entry">
+      <input id="share-code" type="text" autocomplete="off" spellcheck="false" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" />
+      <button id="share-verify" type="button" class="btn" data-i18n="share_verify_button">Ověřit</button>
+    </div>
+    <p class="hint" data-i18n="share_code_hint">Příjemce najde kód v Konektorech u svého konektoru.</p>
+    <p id="share-target" class="share-result hidden"></p>
+    <h5 class="share-section-heading" data-i18n="share_existing_heading">Sdíleno s</h5>
+    <ul id="share-list" class="share-list"></ul>
     <div class="modal-actions">
-      <button id="replicate-cancel" class="btn" data-i18n="replicate_close_button">Zavřít</button>
-      <button id="replicate-run" class="btn primary" data-i18n="replicate_run_button">Replikovat</button>
+      <button id="share-close" type="button" class="btn" data-i18n="share_close_button">Zavřít</button>
+      <button id="share-send" type="button" class="btn primary" disabled data-i18n="share_send_button">Sdílet</button>
+    </div>
+  </div>
+</div>
+
+  <!-- Modal previewing a shared view: incoming invitation or read-only view -->
+<div id="share-preview-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="share-preview-title">
+  <div class="modal-backdrop"></div>
+  <div class="modal-content share-modal-content">
+    <h4 id="share-preview-title"></h4>
+    <p id="share-preview-meta" class="share-subtitle"></p>
+    <p id="share-preview-description" class="share-description"></p>
+    <div class="share-preview-grid">
+      <div>
+        <h5 class="share-section-heading" data-i18n="share_preview_tables">Tabulky</h5>
+        <ul id="share-preview-tables" class="share-chip-list"></ul>
+      </div>
+      <div>
+        <h5 class="share-section-heading" data-i18n="share_preview_columns">Sloupce</h5>
+        <ul id="share-preview-columns" class="share-chip-list"></ul>
+      </div>
+    </div>
+    <h5 class="share-section-heading" data-i18n="share_preview_sql">Definice SQL</h5>
+    <pre id="share-preview-sql" class="share-sql"></pre>
+    <p id="share-preview-result" class="share-result hidden"></p>
+    <div class="modal-actions">
+      <button id="share-preview-remove" type="button" class="btn danger hidden" data-i18n="share_remove_button">Odebrat ze seznamu</button>
+      <span class="modal-actions-spacer"></span>
+      <button id="share-preview-close" type="button" class="btn" data-i18n="share_close_button">Zavřít</button>
+      <button id="share-preview-decline" type="button" class="btn hidden">Odmítnout</button>
+      <button id="share-preview-accept" type="button" class="btn primary hidden">Přijmout</button>
     </div>
   </div>
 </div>

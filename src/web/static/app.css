@@ -2787,43 +2787,57 @@ body.theme-bg-black .rp-accordion-header:hover { background: #374151; }
 
 
 
-/* Replicate view modal */
+/* View sharing */
 .view-list-actions { display: flex; gap: 0.35rem; flex-shrink: 0; }
-.replicate-modal-content { width: min(520px, calc(100vw - 2rem)); }
-.replicate-targets {
-  max-height: 280px;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  margin-bottom: 0.75rem;
-}
-.replicate-target,
-.replicate-overwrite {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.5rem;
-  cursor: pointer;
-  font-size: 0.9rem;
-}
-.replicate-target { padding: 0.35rem 0.25rem; border-radius: 6px; }
-.replicate-target:hover { background: rgba(37, 99, 235, 0.08); }
-.replicate-target .meta { display: block; font-size: 0.75rem; color: var(--muted); }
-.modal-content .replicate-target input,
-.modal-content .replicate-overwrite input { width: auto; margin: 0.2rem 0 0; }
-.replicate-overwrite { margin-bottom: 0.75rem; }
-.replicate-results {
-  list-style: none;
-  padding: 0;
-  margin: 0 0 0.75rem;
-  max-height: 200px;
-  overflow-y: auto;
-  font-size: 0.85rem;
-}
-.replicate-results li { padding: 0.35rem 0.5rem; border-left: 3px solid var(--muted); margin-bottom: 0.25rem; }
-.replicate-results .meta { font-size: 0.75rem; color: var(--muted); }
-.replicate-result.status-created,
-.replicate-result.status-updated { border-left-color: #16a34a; }
-.replicate-result.status-conflict,
-.replicate-result.status-skipped { border-left-color: #d97706; }
-.replicate-result.status-error { border-left-color: #dc2626; }
+.share-modal-content { width: min(620px, calc(100vw - 2rem)); max-height: calc(100vh - 2rem); overflow-y: auto; }
+.share-subtitle { margin: 0 0 0.9rem; }
+.share-field-label { display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.35rem; }
+.share-code-entry { display: flex; gap: 0.5rem; }
+.modal-content .share-code-entry input { flex: 1; margin: 0; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.85rem; }
+.share-code-entry + .hint { margin: 0.35rem 0 0.75rem; }
+.share-result { margin: 0 0 0.75rem; padding: 0.5rem 0.65rem; border-radius: 8px; font-size: 0.85rem; border-left: 3px solid var(--muted); background: #f9fafb; }
+.share-result.info { border-left-color: var(--primary); background: var(--primary-light); color: #3730a3; }
+.share-result.success { border-left-color: #16a34a; background: #f0fdf4; color: #166534; }
+.share-result.error { border-left-color: #dc2626; background: #fef2f2; color: #991b1b; }
+.share-section-heading { margin: 0.9rem 0 0.4rem; font-size: 0.72rem; font-weight: 650; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); }
+.share-list { list-style: none; margin: 0 0 0.75rem; padding: 0; max-height: 240px; overflow-y: auto; }
+.share-row { display: flex; align-items: center; gap: 0.6rem; padding: 0.45rem 0; border-bottom: 1px solid var(--border); }
+.share-row:last-child { border-bottom: 0; }
+.share-row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; font-size: 0.85rem; }
+.share-row-main .meta { font-size: 0.75rem; color: var(--muted); }
+.share-row-error { color: #b91c1c !important; }
+.share-status { flex-shrink: 0; padding: 0.15rem 0.5rem; border-radius: 999px; font-size: 0.72rem; font-weight: 600; background: #f3f4f6; color: #4b5563; }
+.share-status.status-pending, .share-status.status-update { background: #fef3c7; color: #92400e; }
+.share-status.status-accepted { background: #dcfce7; color: #166534; }
+.share-status.status-declined, .share-status.status-removed { background: #f3f4f6; color: #6b7280; }
+.share-description { margin: 0 0 0.5rem; color: inherit !important; }
+.share-description.hidden { display: none; }
+.share-preview-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 1rem; }
+.share-chip-list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.share-chip-list li { padding: 0.15rem 0.5rem; border-radius: 6px; background: #f3f4f6; font-size: 0.78rem; }
+.share-sql { margin: 0 0 0.75rem; padding: 0.6rem 0.75rem; max-height: 220px; overflow: auto; border-radius: 8px; background: #f8fafc; border: 1px solid var(--border); font-size: 0.78rem; white-space: pre-wrap; word-break: break-word; }
+.modal-actions-spacer { flex: 1; }
+.share-tag { display: inline-block; padding: 0 0.35rem; border-radius: 4px; background: #e0e7ff; color: #4338ca; font-size: 0.66rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; vertical-align: 1px; }
+.share-tag.update { background: #fef3c7; color: #92400e; }
+.nav-badge { margin-left: auto; min-width: 20px; padding: 0.05rem 0.4rem; border-radius: 999px; background: #f59e0b; color: #fff; font-size: 0.7rem; font-weight: 700; text-align: center; }
+.nav-badge.hidden { display: none; }
+.incoming-shares.hidden,
+.share-result.hidden,
+.modal-actions .btn.hidden,
+.share-code-row.hidden { display: none; }
+.incoming-shares { margin-bottom: 0.75rem; padding: 0.35rem; border-radius: 10px; background: #fffbeb; border: 1px solid #fde68a; }
+.incoming-heading { margin: 0.1rem 0.35rem 0.35rem; font-size: 0.7rem; font-weight: 650; letter-spacing: 0.06em; text-transform: uppercase; color: #92400e; }
+.incoming-list li { cursor: pointer; }
+.share-code-row .share-code-field { display: flex; flex-direction: column; gap: 0.35rem; }
+.share-code-label { font-size: 0.85rem; font-weight: 600; }
+.share-code-box { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.share-code-box code { padding: 0.35rem 0.6rem; border-radius: 6px; background: #f3f4f6; border: 1px solid var(--border); font-size: 0.85rem; user-select: all; }
+@media (max-width: 640px) { .share-preview-grid { grid-template-columns: 1fr; } }
+body.theme-bg-black .share-result { background: rgba(255,255,255,0.06); color: #f3f4f6; }
+body.theme-bg-black .share-chip-list li,
+body.theme-bg-black .share-code-box code,
+body.theme-bg-black .share-status { background: #374151; color: #f3f4f6; border-color: #4b5563; }
+body.theme-bg-black .share-sql { background: #1f2937; border-color: #4b5563; color: #f3f4f6; }
+body.theme-bg-black .share-row { border-color: #374151; }
+body.theme-bg-black .incoming-shares { background: rgba(245, 158, 11, 0.12); border-color: rgba(245, 158, 11, 0.4); }
+body.theme-bg-black .incoming-heading { color: #fcd34d; }

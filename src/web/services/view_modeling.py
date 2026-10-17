@@ -1515,6 +1515,7 @@ class ViewModelingService:
         parsed["api_type"] = note.get("api_type") or "flat"
         parsed["connector_id"] = note.get("connector_id")
         parsed["replicated_from"] = note.get("replicated_from")
+        parsed["shared_from"] = note.get("shared_from")
         parsed["raw_sql"] = definition
         return parsed
 
@@ -1845,6 +1846,10 @@ class ViewModelingService:
         replicated_from = payload.get("replicated_from")
         if isinstance(replicated_from, dict) and replicated_from:
             note["replicated_from"] = replicated_from
+        shared_from = payload.get("shared_from")
+        if isinstance(shared_from, dict) and shared_from:
+            # Read-only copy of a view shared from another connector.
+            note["shared_from"] = shared_from
         return json.dumps(note, ensure_ascii=False)
 
     def _note_owned_by_connector(self, note_value: Any) -> bool:
@@ -1904,4 +1909,7 @@ class ViewModelingService:
                 rows = _fetchall_as_dicts(cur)
             except pyodbc.Error as exc:
                 raise DatabaseError(f"Nelze načíst uložené views: {exc}") from exc
-        return [r for r in rows if self._note_owned_by_connector(r.get("Poznamka"))]
+        own = [r for r in rows if self._note_owned_by_connector(r.get("Poznamka"))]
+        from src.web.services.view_sharing import annotate_saved_views
+
+        return annotate_saved_views(self, own)

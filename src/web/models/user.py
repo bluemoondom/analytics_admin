@@ -40,6 +40,8 @@ class Connector(BaseModel):
     api_key_header: str = "X-API-Key"
     api_allowed_ips: list[str] = Field(default_factory=list)
     api_max_requests_per_minute: int = 0
+    # Stable code the owner hands to others so they can share views to this connector.
+    share_uuid: str = ""
     created_at: datetime | None = None
     updated_at: datetime | None = None
 

@@ -93,6 +93,7 @@
     $('#connector-api-rate-limit').value = connector ? connector.api_max_requests_per_minute : 0;
 
     applyDbTypeVisibility();
+    renderShareCode(connector);
 
     const deleteBtn = $('#delete-connector');
     if (deleteBtn) {
@@ -303,6 +304,66 @@
     }
   }
 
+  function renderShareCode(connector) {
+    const row = $('#connector-share-code-row');
+    if (!row) return;
+    const code = connector && connector.share_uuid;
+    row.classList.toggle('hidden', !code);
+    $('#connector-share-code').textContent = code || '';
+  }
+
+  async function copyText(text) {
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+        return true;
+      }
+    } catch (err) {
+      // fall through to the legacy path
+    }
+    const area = document.createElement('textarea');
+    area.value = text;
+    area.setAttribute('readonly', '');
+    area.style.position = 'fixed';
+    area.style.opacity = '0';
+    document.body.appendChild(area);
+    area.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch (err) { ok = false; }
+    area.remove();
+    return ok;
+  }
+
+  function bindShareCodeEvents() {
+    const copyBtn = $('#copy-share-code');
+    if (copyBtn) {
+      copyBtn.addEventListener('click', async () => {
+        const code = $('#connector-share-code').textContent.trim();
+        if (!code) return;
+        const ok = await copyText(code);
+        copyBtn.textContent = ok ? t('connector_share_code_copied') : t('connector_share_code_copy_failed');
+        setTimeout(() => { copyBtn.textContent = t('connector_share_code_copy'); }, 1600);
+      });
+    }
+    const regenBtn = $('#regenerate-share-code');
+    if (regenBtn) {
+      regenBtn.addEventListener('click', async () => {
+        const id = $('#connector-id').value;
+        if (!id) return;
+        if (!confirm(t('connector_share_code_regenerate_confirm'))) return;
+        try {
+          const res = await api('POST', `/${id}/share-code`);
+          const connector = state.connectors.find(c => String(c.id) === String(id));
+          if (connector) connector.share_uuid = res.share_uuid;
+          if (state.editingConnector) state.editingConnector.share_uuid = res.share_uuid;
+          renderShareCode({ share_uuid: res.share_uuid });
+        } catch (err) {
+          alert(err.message);
+        }
+      });
+    }
+  }
+
   function showTestResult(message, type) {
     const el = $('#connector-test-result');
     if (!el) return;
@@ -316,6 +377,7 @@
     state.initialized = true;
     loadUser().then(() => {
       bindEvents();
+      bindShareCodeEvents();
     });
   }
 

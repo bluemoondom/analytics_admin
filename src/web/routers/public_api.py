@@ -314,15 +314,19 @@ def _resolve_view_connector(
             )
             continue
 
-        note_connector_id = note.get("connector_id")
-        if note_connector_id is not None and note_connector_id != connector.id:
+        # The view must belong to this connector or be shared with it. Shared
+        # views are served with the recipient connector's own tenant and key.
+        from src.web.services.view_sharing import view_access
+
+        access, _share = view_access(service, view)
+        if access is None:
             api_logger.warning(
-                "View %s belongs to connector_id=%s, skipping connector_id=%s",
+                "View %s is not owned by or shared with connector_id=%s",
                 view_name,
-                note_connector_id,
                 connector.id,
             )
             continue
+        note["_access"] = access
 
         provided_key = _get_provided_key(request, connector)
         key_prefix = provided_key[:4] if len(provided_key) >= 4 else ""
@@ -595,7 +599,8 @@ def public_insert_view(
 
     connector, view, note = _resolve_view_connector(tenant, view_name, request)
 
-    if not note.get("api_put_enabled"):
+    if note.get("_access") != "owner" or not note.get("api_put_enabled"):
+        # Writing through a shared view is reserved for its author.
         api_logger.warning(
             "PUT not enabled for view %s (connector_id=%s)", view_name, connector.id
         )

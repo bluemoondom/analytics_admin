@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -107,6 +108,19 @@ class UserStorage:
                 conn.execute("ALTER TABLE connectors ADD COLUMN analytics_admin_views_only INTEGER")
             except sqlite3.OperationalError:
                 pass
+            try:
+                conn.execute("ALTER TABLE connectors ADD COLUMN share_uuid TEXT")
+            except sqlite3.OperationalError:
+                pass
+            conn.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS ux_connectors_share_uuid ON connectors(share_uuid)"
+            )
+            for (row_id,) in conn.execute(
+                "SELECT id FROM connectors WHERE share_uuid IS NULL OR share_uuid = ''"
+            ).fetchall():
+                conn.execute(
+                    "UPDATE connectors SET share_uuid = ? WHERE id = ?", (str(uuid.uuid4()), row_id)
+                )
             self._migrate_encrypt_secrets_sqlite(conn)
             conn.commit()
 
@@ -183,6 +197,24 @@ class UserStorage:
                 ALTER TABLE connectors ADD analytics_admin_views_only BIT NULL
                 """
             )
+            cur.execute(
+                """
+                IF COL_LENGTH('connectors', 'share_uuid') IS NULL
+                ALTER TABLE connectors ADD share_uuid NVARCHAR(36) NULL
+                """
+            )
+            cur.execute(
+                """
+                IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'ux_connectors_share_uuid')
+                CREATE UNIQUE INDEX ux_connectors_share_uuid ON connectors(share_uuid)
+                WHERE share_uuid IS NOT NULL
+                """
+            )
+            cur.execute("SELECT id FROM connectors WHERE share_uuid IS NULL OR share_uuid = ''")
+            for row in cur.fetchall():
+                cur.execute(
+                    "UPDATE connectors SET share_uuid = %s WHERE id = %s", (str(uuid.uuid4()), row[0])
+                )
             cur.execute(
                 """
                 IF COL_LENGTH('connectors', 'db_password') IS NOT NULL
@@ -299,6 +331,7 @@ class UserStorage:
             api_key_header=row["api_key_header"],
             api_allowed_ips=json.loads(row["api_allowed_ips"] or "[]"),
             api_max_requests_per_minute=row["api_max_requests_per_minute"],
+            share_uuid=(row["share_uuid"] or "") if "share_uuid" in keys else "",
             created_at=row["created_at"],
             updated_at=row["updated_at"],
         )
@@ -464,8 +497,64 @@ class UserStorage:
     # ------------------------------------------------------------------
     def create_connector(self, connector: Connector) -> Connector:
         if self.backend == "mssql":
-            return self._create_connector_mssql(connector)
-        return self._create_connector_sqlite(connector)
+            created = self._create_connector_mssql(connector)
+        else:
+            created = self._create_connector_sqlite(connector)
+        if created.id is not None:
+            created.share_uuid = self.regenerate_share_uuid(created.id)
+        return created
+
+    # ------------------------------------------------------------------
+    # Connector share codes
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _mssql_connect():
+        settings = get_settings()
+        return pymssql.connect(
+            server=settings.DASHBOARD_DB_HOST or settings.DB_HOST,
+            port=settings.DASHBOARD_DB_PORT or settings.DB_PORT,
+            database=settings.DASHBOARD_DB_NAME or settings.DB_NAME,
+            user=settings.DASHBOARD_DB_USER or settings.DB_USER,
+            password=settings.DASHBOARD_DB_PASSWORD or settings.DB_PASSWORD,
+        )
+
+    def regenerate_share_uuid(self, connector_id: int) -> str:
+        """Give the connector a new share code; codes handed out earlier stop working."""
+        code = str(uuid.uuid4())
+        if self.backend == "mssql":
+            with self._mssql_connect() as conn, conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE connectors SET share_uuid = %s WHERE id = %s", (code, connector_id)
+                )
+                conn.commit()
+        else:
+            path = os.path.abspath(get_settings().DASHBOARD_DB_PATH)
+            with sqlite3.connect(path) as conn:
+                conn.execute(
+                    "UPDATE connectors SET share_uuid = ? WHERE id = ?", (code, connector_id)
+                )
+                conn.commit()
+        return code
+
+    def get_connector_by_share_uuid(self, code: str) -> Connector | None:
+        """Return the connector with the given share code (case-insensitive)."""
+        code = (code or "").strip().lower()
+        try:
+            code = str(uuid.UUID(code))
+        except ValueError:
+            return None
+        if self.backend == "mssql":
+            with self._mssql_connect() as conn, conn.cursor(as_dict=True) as cur:
+                cur.execute("SELECT * FROM connectors WHERE share_uuid = %s", (code,))
+                row = cur.fetchone()
+        else:
+            path = os.path.abspath(get_settings().DASHBOARD_DB_PATH)
+            with sqlite3.connect(path) as conn:
+                conn.row_factory = sqlite3.Row
+                row = conn.execute(
+                    "SELECT * FROM connectors WHERE share_uuid = ?", (code,)
+                ).fetchone()
+        return self._row_to_connector(row) if row else None
 
     def _create_connector_sqlite(self, connector: Connector) -> Connector:
         path = os.path.abspath(get_settings().DASHBOARD_DB_PATH)

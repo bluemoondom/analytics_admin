@@ -9,16 +9,12 @@ from fastapi import APIRouter, Depends, HTTPException
 from src.web.auth import require_user
 from src.web.config import get_settings
 from src.web.db import DatabaseError
-from src.web.models.user import Connector, User, UserRole
+from src.web.models.user import Connector, User
+from src.web.services import view_sharing as sharing
 from src.web.services.user_storage import UserStorage
 from src.web.services.view_modeling import (
     ViewModelingError,
     ViewModelingService,
-)
-from src.web.services.view_replication import (
-    ReplicationError,
-    replicate_view,
-    replication_targets,
 )
 
 router = APIRouter(prefix="/api/views", tags=["views"])
@@ -55,6 +51,36 @@ def _user_service(user: User, payload: dict[str, Any] | None = None) -> ViewMode
 
 
 ServiceDep = Annotated[ViewModelingService, Depends(_user_service)]
+
+
+def _view_access(service: ViewModelingService, view_id: int) -> tuple[dict[str, Any], str, dict[str, Any] | None]:
+    """Return (row, access, share) or raise 404 when the view is not visible."""
+    try:
+        row = service.get_saved_view(view_id)
+    except DatabaseError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    access, share = sharing.view_access(service, row)
+    if not row or access is None:
+        raise HTTPException(status_code=404, detail="View not found")
+    return row, access, share
+
+
+def _require_view_owner(service: ViewModelingService, view_id: int) -> dict[str, Any]:
+    row, access, _share = _view_access(service, view_id)
+    if access != sharing.ACCESS_OWNER:
+        raise HTTPException(
+            status_code=403,
+            detail="Sdílené view může upravovat a mazat jen jeho autor.",
+        )
+    return row
+
+
+def _sharing_http_error(exc: sharing.SharingError) -> HTTPException:
+    if isinstance(exc, sharing.SharingNotFound):
+        return HTTPException(status_code=404, detail=str(exc))
+    if isinstance(exc, sharing.SharingForbidden):
+        return HTTPException(status_code=403, detail=str(exc))
+    return HTTPException(status_code=400, detail=str(exc))
 
 
 @router.get("/tables", response_model=list[dict[str, Any]])
@@ -95,7 +121,21 @@ def save_view(
     """Save a modeled view as a new row in TabObecnyPrehled."""
     service = _user_service(user, payload)
     try:
-        return service.save_view(payload)
+        name = service._helios_view_name((payload.get("name") or "").strip())
+        existing_id = service._existing_view_id(name) if name and service._tab_obecny_prehled_exists() else None
+        if existing_id is not None:
+            # Saving under an existing name overwrites that row; only its author may.
+            row = service.get_saved_view(existing_id)
+            access, _share = sharing.view_access(service, row)
+            if access != sharing.ACCESS_OWNER:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"View s názvem {name} už existuje a patří jinému autorovi. Zvolte jiný název.",
+                )
+        result = service.save_view(payload)
+        if result.get("saved"):
+            sharing.on_view_saved(service.connector, result.get("id") or service._existing_view_id(result.get("name") or name))
+        return result
     except (DatabaseError, ViewModelingError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -111,11 +151,19 @@ def list_saved_views(user: Annotated[User, Depends(require_user)]):
 def get_saved_view(
     view_id: int, user: Annotated[User, Depends(require_user)]
 ):
-    """Return a single saved view, parsed for editing if possible."""
+    """Return a single saved view, parsed for editing if possible.
+
+    Includes ``access``: ``owner`` (editable) or ``shared`` (read-only).
+    """
     service = _user_service(user)
+    _row, access, share = _view_access(service, view_id)
     parsed = service.parse_saved_view(view_id)
     if not parsed:
         raise HTTPException(status_code=404, detail="View not found")
+    parsed["access"] = access
+    if share:
+        parsed["share_id"] = share["id"]
+        parsed["shared_by"] = sharing.share_summary(share, for_author=False).get("source_email", "")
     return parsed
 
 
@@ -125,6 +173,7 @@ def get_saved_view_columns(
 ):
     """Return columns of a saved view by probing its definition."""
     service = _user_service(user)
+    _view_access(service, view_id)
     try:
         columns = service.get_saved_view_columns(view_id)
     except (DatabaseError, ViewModelingError) as exc:
@@ -140,95 +189,137 @@ def update_saved_view(
 ):
     """Update an existing saved view definition using its original connector."""
     service = _user_service(user, payload)
+    _require_view_owner(service, view_id)
     try:
-        return service.update_view(view_id, payload)
+        result = service.update_view(view_id, payload)
     except (DatabaseError, ViewModelingError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if result.get("saved"):
+        sharing.on_view_saved(service.connector, view_id)
+    return result
 
 
 @router.delete("/saved/{view_id}")
 def delete_saved_view(
     view_id: int, user: Annotated[User, Depends(require_user)]
 ):
-    """Delete a saved view from TabObecnyPrehled."""
+    """Delete a saved view from TabObecnyPrehled (author only)."""
     service = _user_service(user)
+    _require_view_owner(service, view_id)
     try:
         service.delete_view(view_id)
     except DatabaseError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+    sharing.on_view_deleted(service.connector, view_id)
     return {"deleted": True}
 
 
-@router.get("/replication-targets", response_model=list[dict[str, Any]])
-def list_replication_targets(
+# ---------------------------------------------------------------------------
+# Sharing
+# ---------------------------------------------------------------------------
+def _active_connector(user: User, connector_id: Any = None) -> Connector:
+    connector = _owned_connector(user, connector_id)
+    if connector is None:
+        raise HTTPException(status_code=400, detail="Nemáte vybraný konektor.")
+    return connector
+
+
+@router.get("/share-target", response_model=dict[str, Any])
+def describe_share_target(
+    code: str,
     user: Annotated[User, Depends(require_user)],
     connector_id: int | None = None,
 ):
-    """Return connectors a saved view can be replicated to.
-
-    Admins see connectors of all users, other users only their own.
-    """
-    source = _owned_connector(user, connector_id)
-    if source is None:
-        raise HTTPException(status_code=400, detail="Nemáte vybraný konektor.")
-    if user.role == UserRole.ADMIN:
-        owners = {u.id: u.email for u in UserStorage().list_users()}
-    else:
-        owners = {user.id: user.email}
-    return [
-        {
-            "id": c.id,
-            "name": c.name,
-            "db_type": c.db_type or "mssql",
-            "db_host": c.db_host,
-            "db_name": c.db_name,
-            "owner_email": owners.get(c.user_id, ""),
-            "is_own": c.user_id == user.id,
-        }
-        for c in replication_targets(user, source)
-    ]
+    """Return who owns the connector with the given share code (for confirmation)."""
+    source = _active_connector(user, connector_id)
+    try:
+        return sharing.describe_target(code, source)
+    except sharing.SharingError as exc:
+        raise _sharing_http_error(exc) from exc
 
 
-@router.post("/saved/{view_id}/replicate", response_model=dict[str, Any])
-def replicate_saved_view(
+@router.get("/saved/{view_id}/shares", response_model=list[dict[str, Any]])
+def list_view_shares(
+    view_id: int,
+    user: Annotated[User, Depends(require_user)],
+    connector_id: int | None = None,
+):
+    """Return the shares of a view (author only)."""
+    source = _active_connector(user, connector_id)
+    try:
+        return sharing.list_view_shares(source, view_id)
+    except sharing.SharingError as exc:
+        raise _sharing_http_error(exc) from exc
+
+
+@router.post("/saved/{view_id}/shares", response_model=dict[str, Any])
+def share_saved_view(
     view_id: int,
     payload: dict[str, Any],
     user: Annotated[User, Depends(require_user)],
 ):
-    """Copy a saved view into the databases of the selected connectors.
-
-    Payload: ``target_connector_ids`` (list of ids), optional ``connector_id``
-    of the source (defaults to the active connector) and ``overwrite`` to
-    replace same-named views in the target that are not copies of this view.
-    """
-    source = _owned_connector(user, payload.get("connector_id"))
-    if source is None:
-        raise HTTPException(status_code=400, detail="Nemáte vybraný konektor.")
-    raw_ids = payload.get("target_connector_ids") or []
+    """Share a view with the connector identified by ``code`` (author only)."""
+    source = _active_connector(user, payload.get("connector_id"))
+    code = (payload.get("code") or "").strip()
+    if not code:
+        raise HTTPException(status_code=400, detail="Zadejte kód konektoru.")
     try:
-        target_ids = list(dict.fromkeys(int(i) for i in raw_ids))
-    except (TypeError, ValueError) as exc:
-        raise HTTPException(status_code=400, detail="Neplatné ID konektoru.") from exc
-    if not target_ids:
-        raise HTTPException(status_code=400, detail="Vyberte alespoň jeden cílový konektor.")
-
-    allowed = {c.id: c for c in replication_targets(user, source)}
-    if any(i not in allowed for i in target_ids):
-        raise HTTPException(
-            status_code=403, detail="Na vybrané konektory nemáte oprávnění replikovat."
-        )
-    try:
-        results = replicate_view(
-            source,
-            view_id,
-            [allowed[i] for i in target_ids],
-            overwrite=bool(payload.get("overwrite")),
-        )
-    except ReplicationError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except DatabaseError as exc:
+        return sharing.share_view(user, source, view_id, code)
+    except sharing.SharingError as exc:
+        raise _sharing_http_error(exc) from exc
+    except (DatabaseError, ViewModelingError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return {"view_id": view_id, "results": results}
+
+
+@router.delete("/shares/{share_id}", response_model=dict[str, Any])
+def revoke_share(share_id: int, user: Annotated[User, Depends(require_user)]):
+    """Revoke a share (author). The recipient no longer sees the view."""
+    try:
+        return sharing.revoke_share(user, share_id)
+    except sharing.SharingError as exc:
+        raise _sharing_http_error(exc) from exc
+
+
+@router.get("/shares/incoming", response_model=list[dict[str, Any]])
+def incoming_shares(user: Annotated[User, Depends(require_user)]):
+    """Invitations and new versions waiting for the current user's decision."""
+    return sharing.incoming_shares(user)
+
+
+@router.get("/shares/{share_id}", response_model=dict[str, Any])
+def share_detail(share_id: int, user: Annotated[User, Depends(require_user)]):
+    """Snapshot of a shared view for preview before accepting."""
+    try:
+        return sharing.share_detail(user, share_id)
+    except sharing.SharingError as exc:
+        raise _sharing_http_error(exc) from exc
+
+
+@router.post("/shares/{share_id}/accept", response_model=dict[str, Any])
+def accept_share(share_id: int, user: Annotated[User, Depends(require_user)]):
+    """Accept an invitation or a new version; creates the view for the recipient."""
+    try:
+        return sharing.accept_share(user, share_id)
+    except sharing.SharingError as exc:
+        raise _sharing_http_error(exc) from exc
+
+
+@router.post("/shares/{share_id}/decline", response_model=dict[str, Any])
+def decline_share(share_id: int, user: Annotated[User, Depends(require_user)]):
+    """Decline an invitation, or skip an offered new version."""
+    try:
+        return sharing.decline_share(user, share_id)
+    except sharing.SharingError as exc:
+        raise _sharing_http_error(exc) from exc
+
+
+@router.post("/shares/{share_id}/remove", response_model=dict[str, Any])
+def remove_share(share_id: int, user: Annotated[User, Depends(require_user)]):
+    """Recipient removes a shared view from their list."""
+    try:
+        return sharing.remove_share(user, share_id)
+    except sharing.SharingError as exc:
+        raise _sharing_http_error(exc) from exc
 
 
 @router.get("/api-config", response_model=dict[str, str])

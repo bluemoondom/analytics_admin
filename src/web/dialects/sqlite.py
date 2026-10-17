@@ -65,23 +65,26 @@ class SQLiteDialect(SourceDialect):
     def index_columns(self, conn, table_name: str) -> set[str]:
         """Return the set of indexed column names on a table (SQLite)."""
         indexes: set[str] = set()
+        # sqlite3 cursors are not context managers; close explicitly.
+        cur = conn.cursor()
         try:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = ?",
-                    (table_name,),
-                )
-                for (idx_name,) in cur.fetchall():
-                    try:
-                        cur.execute(f"PRAGMA index_info({idx_name!r})")
-                    except sqlite3.Error:
-                        continue
-                    for row in cur.fetchall():
-                        # PRAGMA index_info(...) -> [seqno, cid, name]
-                        if row and row[2]:
-                            indexes.add(str(row[2]))
+            cur.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = ?",
+                (table_name,),
+            )
+            for (idx_name,) in cur.fetchall():
+                try:
+                    cur.execute(f"PRAGMA index_info({idx_name!r})")
+                except sqlite3.Error:
+                    continue
+                for row in cur.fetchall():
+                    # PRAGMA index_info(...) -> [seqno, cid, name]
+                    if row and row[2]:
+                        indexes.add(str(row[2]))
         except sqlite3.Error:
             pass
+        finally:
+            cur.close()
         return indexes
 
     def type_family(self, raw_type_code, sample):

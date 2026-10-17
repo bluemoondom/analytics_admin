@@ -50,6 +50,7 @@ def _connector_response(connector: Connector) -> dict[str, Any]:
         "api_allowed_ips": connector.api_allowed_ips,
         "api_max_requests_per_minute": connector.api_max_requests_per_minute,
         "has_db_password": bool(connector.db_password),
+        "share_uuid": connector.share_uuid,
         "created_at": _iso(connector.created_at),
         "updated_at": _iso(connector.updated_at),
     }
@@ -177,6 +178,17 @@ def activate_connector(
     _ensure_connector_owner(connector_id, user)
     UserStorage().update_user_connector(user.id, connector_id)
     return {"ok": True, "connector_id": connector_id}
+
+
+@router.post("/{connector_id}/share-code", response_model=dict[str, Any])
+def regenerate_share_code(
+    connector_id: int,
+    user: Annotated[User, Depends(require_user)],
+):
+    """Issue a new share code for the connector; the previous code stops working."""
+    _ensure_connector_owner(connector_id, user)
+    code = UserStorage().regenerate_share_uuid(connector_id)
+    return {"connector_id": connector_id, "share_uuid": code}
 
 
 @router.post("/test", response_model=dict[str, Any])

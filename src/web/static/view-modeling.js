@@ -19,7 +19,10 @@
     columnAggregations: {}, // { "table.column": "SUM" }
     activeWhereValue: null, // { rowIndex, input } currently focused value input
     tableAliasTarget: null, // canvas table alias being renamed
-    replicateViewId: null, // saved view selected for replication
+    shareViewId: null, // saved view open in the share dialog
+    shareCode: '', // verified recipient connector code
+    previewShare: null, // { kind: 'incoming' | 'readonly', id, data }
+    incomingShares: [],
     columnsCache: {},
     previewData: { columns: [], rows: [] },
   };
@@ -136,6 +139,7 @@
       loadConnectors().then(() => {
         loadTables();
         loadSavedViews();
+        loadIncomingShares();
         newView();
       });
     } else if (window.I18n) {
@@ -144,6 +148,7 @@
         loadConnectors().then(() => {
           loadTables();
           loadSavedViews();
+          loadIncomingShares();
           newView();
         });
       });
@@ -151,6 +156,7 @@
       loadConnectors().then(() => {
         loadTables();
         loadSavedViews();
+        loadIncomingShares();
         newView();
       });
     }
@@ -158,6 +164,10 @@
 
   function bindLanguageChange() {
     if (!window.I18n) return;
+    window.I18n.onChange(() => {
+      loadSavedViews();
+      renderIncomingShares();
+    });
     window.I18n.onChange(() => {
       renderCanvas();
       renderJoinEditor();
@@ -187,10 +197,7 @@
     bindControl('view-search', 'input', filterViewList);
     bindControl('view-search', 'change', onViewSearchSelect);
 
-    bindControl('replicate-cancel', 'click', closeReplicateModal);
-    bindControl('replicate-run', 'click', runReplication);
-    const replicateBackdrop = $('#replicate-modal .modal-backdrop');
-    if (replicateBackdrop) replicateBackdrop.addEventListener('click', closeReplicateModal);
+    bindSharingEvents();
 
     bindControl('table-alias-cancel', 'click', closeTableAliasModal);
     bindControl('table-alias-save', 'click', saveTableAlias);
@@ -386,28 +393,41 @@
         list.innerHTML = `<p class="empty-hint">${esc(t('no_saved_views_hint'))}</p>`;
         return;
       }
-      list.innerHTML = views.map(v => `
-        <li data-id="${esc(v.ID || v.id || '')}" title="${esc((v.DefView || '').substring(0, 200))}">
+      list.innerHTML = views.map(v => {
+        const id = esc(v.ID || v.id || '');
+        const shared = v.access === 'shared';
+        const meta = shared
+          ? `<span class="share-tag">${esc(t('readonly_tag'))}</span> ${esc(t('shared_by_label', { email: v.shared_by || '' }))}`
+          : `${esc(v.Autor || 'view')} · ${esc(v.DatPorizeni || '')}`;
+        const actions = shared
+          ? `<button type="button" class="btn small readonly-view" data-id="${id}">${esc(t('view_readonly_button'))}</button>`
+          : `<button type="button" class="btn small edit-view" data-id="${id}">${esc(t('edit_view_button'))}</button>
+            <button type="button" class="btn small share-view" data-id="${id}" title="${esc(t('share_view_title'))}">${esc(t('share_view_button'))}</button>`;
+        return `
+        <li data-id="${id}" class="${shared ? 'is-shared' : ''}" title="${esc((v.DefView || '').substring(0, 200))}">
           <div>
             <div>${esc(v.NazevSys || v.Nazev || t('unnamed_view_fallback'))}</div>
-            <div class="meta">${esc(v.Autor || 'view')} · ${esc(v.DatPorizeni || '')}${isReplica(v) ? ' · ' + esc(t('replica_badge')) : ''}</div>
+            <div class="meta">${meta}</div>
           </div>
-          <span class="view-list-actions">
-            <button type="button" class="btn small edit-view" data-id="${esc(v.ID || v.id || '')}">${esc(t('edit_view_button'))}</button>
-            <button type="button" class="btn small replicate-view" data-id="${esc(v.ID || v.id || '')}" title="${esc(t('replicate_view_title'))}">${esc(t('replicate_view_button'))}</button>
-          </span>
-        </li>
-      `).join('');
+          <span class="view-list-actions">${actions}</span>
+        </li>`;
+      }).join('');
       list.querySelectorAll('.edit-view').forEach(btn => {
         btn.addEventListener('click', (e) => {
           e.stopPropagation();
           loadViewForEdit(parseInt(btn.dataset.id));
         });
       });
-      list.querySelectorAll('.replicate-view').forEach(btn => {
+      list.querySelectorAll('.share-view').forEach(btn => {
         btn.addEventListener('click', (e) => {
           e.stopPropagation();
-          openReplicateModal(parseInt(btn.dataset.id));
+          openShareModal(parseInt(btn.dataset.id));
+        });
+      });
+      list.querySelectorAll('.readonly-view').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          openReadonlyView(parseInt(btn.dataset.id));
         });
       });
       populateDatalist(
@@ -426,6 +446,10 @@
   async function loadViewForEdit(viewId) {
     try {
       const parsed = await api('GET', '/saved/' + viewId);
+      if (parsed.access === 'shared') {
+        showReadonlyPreview(viewId, parsed);
+        return;
+      }
       state.viewId = viewId;
       $('#view-name-input').value = parsed.name || '';
       $('#view-modeling-description').value = parsed.description || '';
@@ -728,88 +752,340 @@
   }
 
   // ---------------------------------------------------------------
-  // Replicate modal (copy a saved view into other connectors' databases)
+  // Sharing: author dialog, incoming invitations, read-only preview
   // ---------------------------------------------------------------
-  function isReplica(view) {
-    const note = (view && view.Poznamka) || '';
-    if (!note.trim().startsWith('{')) return false;
+  function errorText(err) {
+    // FastAPI errors arrive as JSON text: {"detail": "..."}.
+    const raw = (err && err.message) || String(err || '');
     try {
-      return !!JSON.parse(note).replicated_from;
-    } catch (err) {
-      return false;
-    }
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed.detail === 'string') return parsed.detail;
+    } catch (e) { /* plain text */ }
+    return raw;
   }
 
-  async function openReplicateModal(viewId) {
+  function showResult(el, text, kind) {
+    if (!el) return;
+    el.textContent = text;
+    el.className = 'share-result ' + (kind || '');
+  }
+
+  function hideResult(el) {
+    if (!el) return;
+    el.textContent = '';
+    el.className = 'share-result hidden';
+  }
+
+  function shareStatusLabel(share) {
+    if (share.status === 'accepted' && share.update_available) return t('share_status_update');
+    return t('share_status_' + share.status);
+  }
+
+  function bindSharingEvents() {
+    bindControl('share-close', 'click', closeShareModal);
+    bindControl('share-verify', 'click', verifyShareCode);
+    bindControl('share-send', 'click', sendShare);
+    bindControl('share-code', 'input', () => {
+      state.shareCode = '';
+      $('#share-send').disabled = true;
+      hideResult($('#share-target'));
+    });
+    bindControl('share-code', 'keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        if (state.shareCode) sendShare(); else verifyShareCode();
+      }
+    });
+    bindControl('share-preview-close', 'click', closeSharePreview);
+    bindControl('share-preview-accept', 'click', acceptPreviewShare);
+    bindControl('share-preview-decline', 'click', declinePreviewShare);
+    bindControl('share-preview-remove', 'click', removePreviewShare);
+    const shareBackdrop = $('#share-modal .modal-backdrop');
+    if (shareBackdrop) shareBackdrop.addEventListener('click', closeShareModal);
+    const previewBackdrop = $('#share-preview-modal .modal-backdrop');
+    if (previewBackdrop) previewBackdrop.addEventListener('click', closeSharePreview);
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape') return;
+      if (!$('#share-modal').classList.contains('hidden')) closeShareModal();
+      if (!$('#share-preview-modal').classList.contains('hidden')) closeSharePreview();
+    });
+    // New invitations may arrive while the page is open.
+    window.addEventListener('focus', loadIncomingShares);
+    setInterval(loadIncomingShares, 120000);
+  }
+
+  // ----- author -----
+  async function openShareModal(viewId) {
     const view = state.savedViews.find(v => (v.ID || v.id) == viewId);
     if (!view) return;
-    state.replicateViewId = viewId;
-    $('#replicate-view-name').textContent = t('replicate_modal_view_label', {
-      name: view.NazevSys || view.Nazev || t('unnamed_view_fallback'),
-    });
-    $('#replicate-overwrite').checked = false;
-    const results = $('#replicate-results');
-    results.innerHTML = '';
-    results.classList.add('hidden');
-    const targets = $('#replicate-targets');
-    targets.innerHTML = `<p class="empty-hint">${esc(t('replicate_loading_targets'))}</p>`;
-    $('#replicate-run').disabled = true;
-    $('#replicate-modal').classList.remove('hidden');
+    state.shareViewId = viewId;
+    state.shareCode = '';
+    $('#share-view-name').textContent = t('share_modal_view_label', { name: view.NazevSys || view.Nazev || '' });
+    $('#share-code').value = '';
+    $('#share-send').disabled = true;
+    hideResult($('#share-target'));
+    $('#share-list').innerHTML = '';
+    $('#share-modal').classList.remove('hidden');
+    $('#share-code').focus();
+    await renderShareList();
+  }
+
+  function closeShareModal() {
+    $('#share-modal').classList.add('hidden');
+    state.shareViewId = null;
+    state.shareCode = '';
+  }
+
+  async function renderShareList() {
+    const list = $('#share-list');
+    const viewId = state.shareViewId;
+    if (!viewId) return;
     try {
-      const list = await api('GET', '/replication-targets');
-      if (!list.length) {
-        targets.innerHTML = `<p class="empty-hint">${esc(t('replicate_no_targets'))}</p>`;
+      const shares = await api('GET', '/saved/' + viewId + '/shares');
+      if (state.shareViewId !== viewId) return;
+      const visible = shares.filter(s => s.status !== 'revoked');
+      if (!visible.length) {
+        list.innerHTML = `<li class="empty-hint">${esc(t('share_none'))}</li>`;
         return;
       }
-      targets.innerHTML = list.map(c => `
-        <label class="replicate-target">
-          <input type="checkbox" value="${esc(c.id)}" />
-          <span>
-            <strong>${esc(c.name)}</strong>
-            <span class="meta">${esc(c.db_host)} / ${esc(c.db_name)}${c.is_own ? '' : ' · ' + esc(c.owner_email)}</span>
-          </span>
-        </label>
-      `).join('');
-      $('#replicate-run').disabled = false;
-    } catch (err) {
-      targets.innerHTML = `<p class="empty-hint">${esc(t('replicate_targets_load_error', { error: err.message }))}</p>`;
-    }
-  }
-
-  function closeReplicateModal() {
-    $('#replicate-modal').classList.add('hidden');
-    state.replicateViewId = null;
-  }
-
-  async function runReplication() {
-    const viewId = state.replicateViewId;
-    if (!viewId) return;
-    const ids = Array.from($$('#replicate-targets input[type="checkbox"]:checked')).map(el => parseInt(el.value));
-    if (!ids.length) {
-      alert(t('replicate_select_target_alert'));
-      return;
-    }
-    const runBtn = $('#replicate-run');
-    runBtn.disabled = true;
-    const results = $('#replicate-results');
-    results.classList.remove('hidden');
-    results.innerHTML = `<li>${esc(t('replicate_running'))}</li>`;
-    try {
-      const res = await api('POST', '/saved/' + viewId + '/replicate', {
-        target_connector_ids: ids,
-        overwrite: $('#replicate-overwrite').checked,
+      list.innerHTML = visible.map(s => `
+        <li class="share-row">
+          <div class="share-row-main">
+            <strong>${esc(s.target_email)}</strong>
+            <span class="meta">${esc(s.target_connector_name)}${s.mode ? ' · ' + esc(t('share_mode_' + s.mode)) : ''}</span>
+            ${s.message && s.status === 'pending' ? `<span class="meta share-row-error">${esc(s.message)}</span>` : ''}
+          </div>
+          <span class="share-status status-${esc(s.status)}${s.update_available ? ' status-update' : ''}">${esc(shareStatusLabel(s))}</span>
+          ${['pending', 'accepted'].includes(s.status)
+            ? `<button type="button" class="btn small share-revoke" data-id="${esc(s.id)}" data-email="${esc(s.target_email)}">${esc(t('share_revoke_button'))}</button>`
+            : ''}
+        </li>`).join('');
+      list.querySelectorAll('.share-revoke').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          if (!confirm(t('share_revoke_confirm', { email: btn.dataset.email }))) return;
+          try {
+            await api('DELETE', '/shares/' + btn.dataset.id);
+            await renderShareList();
+          } catch (err) {
+            alert(t('share_error', { error: errorText(err) }));
+          }
+        });
       });
-      notifyViewsChanged();
-      results.innerHTML = (res.results || []).map(r => `
-        <li class="replicate-result status-${esc(r.status)}">
-          <strong>${esc(r.connector_name)}</strong>: ${esc(t('replicate_status_' + r.status))}
-          ${r.message ? `<div class="meta">${esc(r.message)}</div>` : ''}
-        </li>
-      `).join('');
     } catch (err) {
-      results.innerHTML = `<li class="replicate-result status-error">${esc(t('replicate_error_alert', { error: err.message }))}</li>`;
-    } finally {
-      runBtn.disabled = false;
+      list.innerHTML = `<li class="empty-hint">${esc(t('share_error', { error: errorText(err) }))}</li>`;
+    }
+  }
+
+  async function verifyShareCode() {
+    const code = $('#share-code').value.trim();
+    const target = $('#share-target');
+    if (!code) return;
+    try {
+      const res = await api('GET', '/share-target?code=' + encodeURIComponent(code));
+      state.shareCode = code;
+      showResult(target, t('share_target_found', { email: res.user_email, connector: res.connector_name }), 'info');
+      $('#share-send').disabled = false;
+      $('#share-send').focus();
+    } catch (err) {
+      state.shareCode = '';
+      $('#share-send').disabled = true;
+      showResult(target, errorText(err), 'error');
+    }
+  }
+
+  async function sendShare() {
+    if (!state.shareViewId || !state.shareCode) return;
+    const btn = $('#share-send');
+    btn.disabled = true;
+    try {
+      await api('POST', '/saved/' + state.shareViewId + '/shares', { code: state.shareCode });
+      showResult($('#share-target'), t('share_sent'), 'success');
+      $('#share-code').value = '';
+      state.shareCode = '';
+      await renderShareList();
+    } catch (err) {
+      showResult($('#share-target'), errorText(err), 'error');
+      btn.disabled = false;
+    }
+  }
+
+  // ----- recipient: incoming invitations -----
+  async function loadIncomingShares() {
+    try {
+      state.incomingShares = await api('GET', '/shares/incoming');
+    } catch (err) {
+      state.incomingShares = [];
+    }
+    renderIncomingShares();
+  }
+
+  function renderIncomingShares() {
+    const shares = state.incomingShares || [];
+    const badge = $('#incoming-share-badge');
+    if (badge) {
+      badge.textContent = shares.length ? String(shares.length) : '';
+      badge.classList.toggle('hidden', !shares.length);
+      badge.title = t('incoming_shares_heading');
+    }
+    const box = $('#incoming-shares');
+    const list = $('#incoming-share-list');
+    if (!box || !list) return;
+    box.classList.toggle('hidden', !shares.length);
+    const count = $('#incoming-share-count');
+    if (count) count.textContent = shares.length ? String(shares.length) : '';
+    list.innerHTML = shares.map(s => `
+      <li data-id="${esc(s.id)}" tabindex="0" role="button">
+        <div>
+          <div>${esc(s.view_name)}</div>
+          <div class="meta">${s.update_available ? `<span class="share-tag update">${esc(t('update_tag'))}</span> ` : ''}${esc(s.source_email)} → ${esc(s.target_connector_name)}</div>
+        </div>
+      </li>`).join('');
+    list.querySelectorAll('li').forEach(li => {
+      const open = () => openIncomingShare(parseInt(li.dataset.id));
+      li.addEventListener('click', open);
+      li.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          open();
+        }
+      });
+    });
+  }
+
+  function fillPreview({ title, meta, description, tables, columns, sql }) {
+    $('#share-preview-title').textContent = title || '';
+    $('#share-preview-meta').textContent = meta || '';
+    const desc = $('#share-preview-description');
+    desc.textContent = description || '';
+    desc.classList.toggle('hidden', !description);
+    $('#share-preview-tables').innerHTML = (tables || []).map(x => `<li>${esc(x)}</li>`).join('') || '<li>–</li>';
+    $('#share-preview-columns').innerHTML = (columns || []).map(x => `<li>${esc(x)}</li>`).join('') || '<li>–</li>';
+    $('#share-preview-sql').innerHTML = highlightSql(sql || '');
+    hideResult($('#share-preview-result'));
+  }
+
+  function setPreviewButtons(kind, data) {
+    const accept = $('#share-preview-accept');
+    const decline = $('#share-preview-decline');
+    const remove = $('#share-preview-remove');
+    const incoming = kind === 'incoming';
+    accept.classList.toggle('hidden', !incoming);
+    decline.classList.toggle('hidden', !incoming);
+    remove.classList.toggle('hidden', incoming || !data.share_id);
+    [accept, decline, remove].forEach(b => { b.disabled = false; });
+    if (incoming) {
+      const update = data.status === 'accepted' && data.update_available;
+      accept.textContent = t(update ? 'share_accept_update_button' : 'share_accept_button');
+      decline.textContent = t(update ? 'share_skip_update_button' : 'share_decline_button');
+    }
+  }
+
+  async function openIncomingShare(shareId) {
+    try {
+      const d = await api('GET', '/shares/' + shareId);
+      state.previewShare = { kind: 'incoming', id: shareId, data: d };
+      fillPreview({
+        title: d.view_name,
+        meta: t('incoming_from', { email: d.source_email, connector: d.target_connector_name })
+          + (d.update_available ? ' · ' + t('update_tag') : ''),
+        description: d.description,
+        tables: d.tables,
+        columns: d.columns,
+        sql: d.sql,
+      });
+      setPreviewButtons('incoming', d);
+      if (d.message && d.status === 'pending') showResult($('#share-preview-result'), d.message, 'error');
+      $('#share-preview-modal').classList.remove('hidden');
+    } catch (err) {
+      alert(t('share_error', { error: errorText(err) }));
+    }
+  }
+
+  function closeSharePreview() {
+    $('#share-preview-modal').classList.add('hidden');
+    state.previewShare = null;
+  }
+
+  async function acceptPreviewShare() {
+    const p = state.previewShare;
+    if (!p || p.kind !== 'incoming') return;
+    const result = $('#share-preview-result');
+    const accept = $('#share-preview-accept');
+    const decline = $('#share-preview-decline');
+    accept.disabled = true;
+    decline.disabled = true;
+    showResult(result, t('share_accepting'), 'info');
+    try {
+      const res = await api('POST', '/shares/' + p.id + '/accept');
+      const key = res.result === 'same_db' ? 'share_accepted_same_db'
+        : res.result === 'updated' ? 'share_accepted_updated' : 'share_accepted_copied';
+      showResult(result, t(key, { connector: res.target_connector_name }), 'success');
+      accept.classList.add('hidden');
+      decline.classList.add('hidden');
+      await loadIncomingShares();
+      loadSavedViews();
+      notifyViewsChanged();
+    } catch (err) {
+      showResult(result, errorText(err), 'error');
+      accept.disabled = false;
+      decline.disabled = false;
+    }
+  }
+
+  async function declinePreviewShare() {
+    const p = state.previewShare;
+    if (!p || p.kind !== 'incoming') return;
+    try {
+      await api('POST', '/shares/' + p.id + '/decline');
+      closeSharePreview();
+      await loadIncomingShares();
+    } catch (err) {
+      showResult($('#share-preview-result'), errorText(err), 'error');
+    }
+  }
+
+  // ----- recipient: read-only shared view -----
+  async function openReadonlyView(viewId) {
+    try {
+      const parsed = await api('GET', '/saved/' + viewId);
+      showReadonlyPreview(viewId, parsed);
+    } catch (err) {
+      alert(t('share_error', { error: errorText(err) }));
+    }
+  }
+
+  function showReadonlyPreview(viewId, parsed) {
+    const aliases = parsed.table_aliases || {};
+    const tables = new Set([parsed.primary_table, ...Object.values(aliases)]);
+    (parsed.joins || []).forEach(j => {
+      if (j.right_table) tables.add(aliases[j.right_table] || j.right_table);
+    });
+    state.previewShare = { kind: 'readonly', id: parsed.share_id, viewId, data: parsed };
+    fillPreview({
+      title: parsed.name,
+      meta: t('readonly_notice', { email: parsed.shared_by || '' }),
+      description: parsed.description,
+      tables: [...tables].filter(Boolean).sort(),
+      columns: (parsed.selected_columns || []).map(c => c.alias || c.name)
+        .concat((parsed.custom_columns || []).map(c => c.alias).filter(Boolean)),
+      sql: parsed.raw_sql,
+    });
+    setPreviewButtons('readonly', parsed);
+    $('#share-preview-modal').classList.remove('hidden');
+  }
+
+  async function removePreviewShare() {
+    const p = state.previewShare;
+    if (!p || p.kind !== 'readonly' || !p.id) return;
+    if (!confirm(t('share_remove_confirm'))) return;
+    try {
+      await api('POST', '/shares/' + p.id + '/remove');
+      closeSharePreview();
+      if (state.viewId === p.viewId) newView();
+      loadSavedViews();
+      notifyViewsChanged();
+    } catch (err) {
+      showResult($('#share-preview-result'), errorText(err), 'error');
     }
   }
 

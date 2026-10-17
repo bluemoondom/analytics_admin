@@ -200,13 +200,48 @@
 }
 .sidebar-modern .nav-list li.active > div:first-child > div:first-child { color: var(--sb-accent); font-weight: 600; }
 .sidebar-modern .nav-list li.nav-filtered-out { display: none; }
-/* Row actions appear on hover to keep the list calm. */
-.sidebar-modern .nav-list li .btn.small,
-.sidebar-modern .nav-list li .view-list-actions { opacity: 0; transition: opacity 0.12s; }
-.sidebar-modern .nav-list li:hover .btn.small,
+/* Row actions float over the end of the row on hover, so names use the full width. */
+.sidebar-modern .nav-list li .view-list-actions,
+.sidebar-modern .nav-list li .dashboard-item-actions {
+  position: absolute;
+  top: 50%;
+  right: 0.35rem;
+  display: flex;
+  gap: 0.3rem;
+  transform: translateY(-50%);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s;
+}
 .sidebar-modern .nav-list li:hover .view-list-actions,
-.sidebar-modern .nav-list li:focus-within .btn.small,
-.sidebar-modern .nav-list li:focus-within .view-list-actions { opacity: 1; }
+.sidebar-modern .nav-list li:hover .dashboard-item-actions,
+.sidebar-modern .nav-list li:focus-within .view-list-actions,
+.sidebar-modern .nav-list li:focus-within .dashboard-item-actions { opacity: 1; pointer-events: auto; }
+/* Fade the row text out under the floating buttons; works on any background. */
+.sidebar-modern .nav-list li > div:first-child { flex: 1 1 auto; }
+.sidebar-modern .nav-list li:hover > div:first-child,
+.sidebar-modern .nav-list li:focus-within > div:first-child {
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - var(--sb-actions-w, 9.5rem)), transparent calc(100% - var(--sb-actions-w, 9.5rem) + 1.5rem));
+  mask-image: linear-gradient(to right, #000 calc(100% - var(--sb-actions-w, 9.5rem)), transparent calc(100% - var(--sb-actions-w, 9.5rem) + 1.5rem));
+}
+.sidebar-modern .nav-list li.is-shared { --sb-actions-w: 5.5rem; }
+.sidebar-modern .nav-list li:not(:has(.view-list-actions, .dashboard-item-actions)) > div:first-child {
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+@media (hover: none) {
+  /* Touch screens cannot hover: keep the actions visible. */
+  .sidebar-modern .nav-list li .view-list-actions,
+  .sidebar-modern .nav-list li .dashboard-item-actions { position: static; transform: none; opacity: 1; pointer-events: auto; }
+  .sidebar-modern .nav-list li > div:first-child { -webkit-mask-image: none !important; mask-image: none !important; }
+}
+/* Connector rows use a different markup: name + server on two lines. */
+.sidebar-modern .nav-list .dashboard-item-main { display: flex; flex-direction: column; min-width: 0; }
+.sidebar-modern .nav-list .dashboard-name,
+.sidebar-modern .nav-list .dashboard-meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sidebar-modern .nav-list .dashboard-name { font-size: 0.875rem; color: var(--sb-text); }
+.sidebar-modern .nav-list .dashboard-meta { font-size: 0.72rem; color: var(--sb-faint); }
+.sidebar-modern .nav-list li.active .dashboard-name { color: var(--sb-accent); font-weight: 600; }
 .sidebar-modern .nav-empty {
   margin: 0.5rem 0.4rem;
   color: var(--sb-faint);
