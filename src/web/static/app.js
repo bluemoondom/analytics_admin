@@ -3398,7 +3398,8 @@
       const valueWidth = ctx.measureText(valueText).width;
       ctx.textAlign = 'center';
       if (valueWidth + 12 <= w) {
-        ctx.fillStyle = '#ffffff';
+        // Dark text on light (pastel) bars, white text on dark bars.
+        ctx.fillStyle = isLightColor(colors[i % colors.length]) ? '#1f2937' : '#ffffff';
         ctx.fillText(valueText, x + w / 2, y + h / 2);
       } else {
         ctx.textAlign = 'left';
@@ -3406,6 +3407,14 @@
         ctx.fillText(valueText, x + w + 6, y + h / 2);
       }
     });
+  }
+
+  function isLightColor(color) {
+    const m = String(color).match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
+    if (!m) return false;
+    const [r, g, b] = m.slice(1, 4).map(Number);
+    // Relative luminance (sRGB approximation); above 0.6 reads as a light background.
+    return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 > 0.6;
   }
 
   function formatNumber(value, format, isInteger = false) {
