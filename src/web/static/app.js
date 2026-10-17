@@ -3100,6 +3100,28 @@
       });
     }
 
+    if (isPercent) {
+      // 100 % stacked charts show each dataset's share of the category total.
+      labels.forEach((_, li) => {
+        const total = datasets.reduce((acc, ds) => acc + (Number(ds.data[li]) || 0), 0);
+        datasets.forEach(ds => {
+          ds.data[li] = total ? (Number(ds.data[li]) || 0) / total * 100 : 0;
+        });
+      });
+    }
+
+    const isPie = type === 'pie' || type === 'doughnut';
+    if (isPie) {
+      // One colour per slice; a single dataset colour made every slice identical.
+      datasets.forEach(ds => {
+        ds.backgroundColor = labels.map((_, li) => colors[li % colors.length]);
+        ds.hoverBackgroundColor = labels.map((_, li) => colors[li % colors.length].replace('0.7', '0.9'));
+        ds.borderColor = '#ffffff';
+        ds.borderWidth = 2;
+        ds.borderRadius = 0;
+      });
+    }
+
     const showGrid = parseBool(dash.show_grid, true);
     const indexAxis = isHorizontal ? 'y' : 'x';
     const gridOptions = { color: '#e5e7eb', drawBorder: false, tickLength: 8 };
@@ -3147,7 +3169,11 @@
     };
     const instance = new Chart(canvas, config);
     state.chartInstances[canvas.id] = instance;
-    renderCustomLegend(legendContainer, instance, datasets);
+    if (isPie) {
+      renderSliceLegend(legendContainer, instance, labels, datasets[0] ? datasets[0].backgroundColor : []);
+    } else {
+      renderCustomLegend(legendContainer, instance, datasets);
+    }
   }
 
   function buildDataset(data, series, colorIndex, label, isHorizontal, isArea, forceLine) {
@@ -3231,7 +3257,9 @@
       item.type = 'button';
       item.className = 'legend-item';
       item.dataset.datasetIndex = String(i);
-      const color = typeof ds.backgroundColor === 'string' ? ds.backgroundColor : ds.borderColor;
+      // Lines and areas are drawn with their border colour; their fill is only a faint tint.
+      const isLineSeries = ds.type === 'line';
+      const color = !isLineSeries && typeof ds.backgroundColor === 'string' ? ds.backgroundColor : ds.borderColor;
       item.innerHTML = `<span class="legend-color" style="background:${esc(color)}"></span>
         <span class="legend-label">${esc(ds.label)}</span>`;
       item.addEventListener('click', () => {
@@ -3239,6 +3267,24 @@
         chart.setDatasetVisibility(index, !chart.isDatasetVisible(index));
         chart.update();
         item.classList.toggle('hidden', !chart.isDatasetVisible(index));
+      });
+      container.appendChild(item);
+    });
+  }
+
+  function renderSliceLegend(container, chart, labels, colors) {
+    // Pie / doughnut: one legend item per slice, clicking toggles that slice.
+    container.innerHTML = '';
+    labels.forEach((label, i) => {
+      const item = document.createElement('button');
+      item.type = 'button';
+      item.className = 'legend-item';
+      item.innerHTML = `<span class="legend-color" style="background:${esc(colors[i] || '')}"></span>
+        <span class="legend-label">${esc(label)}</span>`;
+      item.addEventListener('click', () => {
+        chart.toggleDataVisibility(i);
+        chart.update();
+        item.classList.toggle('hidden', !chart.getDataVisibility(i));
       });
       container.appendChild(item);
     });
@@ -3296,35 +3342,69 @@
     const xCol = chart.x_column;
     const s = chart.series[0];
     if (!s) return;
-    const labels = [...new Set(rows.map(r => r[xCol]))].sort();
-    const values = labels.map(label => {
-      return rows.filter(r => r[xCol] === label).reduce((a, r) => a + (parseFloat(r[s.y_column]) || 0), 0);
-    });
+    const agg = s.aggregation || 'sum';
+    const items = [...new Set(rows.map(r => r[xCol]))].map(label => {
+      const relevant = rows.filter(r => r[xCol] === label);
+      const nums = relevant.map(r => parseFloat(r[s.y_column]) || 0);
+      let value = nums.reduce((a, b) => a + b, 0);
+      if (agg === 'count') value = relevant.length;
+      else if (agg === 'avg') value = nums.length ? value / nums.length : 0;
+      else if (agg === 'min') value = nums.length ? Math.min(...nums) : 0;
+      else if (agg === 'max') value = nums.length ? Math.max(...nums) : 0;
+      return { label: String(label ?? ''), value };
+    }).sort((a, b) => b.value - a.value); // a funnel narrows from the largest stage
 
-    const ctx = canvas.getContext('2d');
     const rect = canvas.parentElement ? canvas.parentElement.getBoundingClientRect() : { width: 300, height: 200 };
     const width = Math.max(rect.width || 300, 200);
-    const rowHeight = Math.max(34, Math.min(50, (rect.height || 200) / labels.length));
-    canvas.width = width;
-    canvas.height = labels.length * rowHeight + 20;
-    const max = Math.max(...values, 1);
+    const rowHeight = Math.max(34, Math.min(50, ((rect.height || 200) - 20) / items.length));
+    const height = items.length * rowHeight + 20;
+    // Draw at device resolution so text and edges stay sharp on HiDPI screens.
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.round(width * dpr);
+    canvas.height = Math.round(height * dpr);
+    canvas.style.width = width + 'px';
+    canvas.style.height = height + 'px';
+    const ctx = canvas.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
     const dash = state.currentDashboard;
     const scheme = COLOR_SCHEMES[dash.color_scheme || 'default'] || DEFAULT_COLORS;
     const colors = [...scheme].map(c => c.replace('0.7', '1'));
     const nf = dash.number_format || '#,##0.00';
+    const isInt = agg === 'count' || isIntegerColumn(s.y_column);
+    const textColor = getComputedStyle(canvas).color || '#111827';
+    const font = '12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
 
-    labels.forEach((label, i) => {
+    ctx.font = font;
+    const labelWidth = Math.min(width * 0.35, Math.max(...items.map(it => ctx.measureText(it.label).width)) + 16);
+    const barArea = width - labelWidth - 8;
+    const max = Math.max(...items.map(it => it.value), 1);
+
+    items.forEach((it, i) => {
       const h = rowHeight - 10;
-      const w = (values[i] / max) * (width - 120);
       const y = i * rowHeight + 10;
-      const x = (width - w) / 2;
+      const w = Math.max(2, (it.value / max) * barArea);
+      const x = labelWidth + (barArea - w) / 2;
       ctx.fillStyle = colors[i % colors.length];
       ctx.fillRect(x, y, w, h);
-      ctx.fillStyle = '#111827';
-      ctx.font = '12px sans-serif';
-      ctx.textAlign = 'left';
-      const isInt = isIntegerColumn(s.y_column);
-      ctx.fillText(`${esc(label)}: ${formatNumber(values[i], nf, isInt)}`, 10, y + h / 2 + 4);
+
+      ctx.font = font;
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = textColor;
+      ctx.textAlign = 'right';
+      ctx.fillText(it.label, labelWidth - 10, y + h / 2);
+
+      const valueText = formatNumber(it.value, nf, isInt);
+      const valueWidth = ctx.measureText(valueText).width;
+      ctx.textAlign = 'center';
+      if (valueWidth + 12 <= w) {
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(valueText, x + w / 2, y + h / 2);
+      } else {
+        ctx.textAlign = 'left';
+        ctx.fillStyle = textColor;
+        ctx.fillText(valueText, x + w + 6, y + h / 2);
+      }
     });
   }
 

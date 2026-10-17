@@ -188,4 +188,12 @@ Database changes are applied automatically on startup. The metadata database get
 
 ![Incoming shared view: preview before accepting](img/screen8.jpg)
 
+![Sales dashboard: KPI cards, bar + line combination, stacked bar, doughnut and multi-line chart](img/screen9.jpg)
+
+![Combined chart: revenue as bars and plan as a line, expanded](img/screen10.jpg)
+
+![Chart types: grouped bar, 100 % stacked bar, horizontal bar, stacked area, pie and funnel](img/screen11.jpg)
+
+![Chart settings: one series rendered as bars, another as a line](img/screen12.jpg)
+
 ---
