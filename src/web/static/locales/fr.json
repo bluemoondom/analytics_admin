@@ -474,5 +474,8 @@
   "connector_share_code_copy_failed": "Échec de la copie",
   "connector_share_code_regenerate": "Nouveau code",
   "connector_share_code_regenerate_confirm": "Générer un nouveau code ? L'ancien code ne fonctionnera plus, les partages déjà acceptés restent.",
-  "connector_share_code_hint": "Envoyez ce code à l'auteur d'une view pour qu'il puisse la partager vers ce connecteur."
+  "connector_share_code_hint": "Envoyez ce code à l'auteur d'une view pour qu'il puisse la partager vers ce connecteur.",
+  "chart_loading": "Chargement des données du graphique…",
+  "chart_load_error": "Impossible de charger les données du graphique : {error}",
+  "chart_truncated_note": "Affichage des {count} premières valeurs de l'axe"
 }

@@ -474,5 +474,8 @@
   "connector_share_code_copy_failed": "Nelze kopírovat",
   "connector_share_code_regenerate": "Nový kód",
   "connector_share_code_regenerate_confirm": "Vygenerovat nový kód? Starý kód přestane platit, už přijatá sdílení zůstanou.",
-  "connector_share_code_hint": "Pošlete tento kód autorovi view. Podle něj vám může view nasdílet na tento konektor."
+  "connector_share_code_hint": "Pošlete tento kód autorovi view. Podle něj vám může view nasdílet na tento konektor.",
+  "chart_loading": "Načítám data grafu…",
+  "chart_load_error": "Data grafu se nepodařilo načíst: {error}",
+  "chart_truncated_note": "Zobrazeno prvních {count} hodnot osy"
 }

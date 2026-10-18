@@ -12,11 +12,12 @@
 <body>
   {% block body %}{% endblock %}
 
-  <!-- Loaded before CDN scripts so the remembered sidebar width applies right away. -->
+  <!-- Loaded first so the remembered sidebar width applies before the larger libraries. -->
   <script src="/static/sidebar.js"></script>
 
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <!-- Bundled locally (see static/vendor/README.md) so the app works without internet access. -->
+  <script src="/static/vendor/chart.umd.min.js"></script>
+  <script src="/static/vendor/jspdf.umd.min.js"></script>
   <script src="/static/i18n.js"></script>
   {% block scripts %}{% endblock %}
 </body>

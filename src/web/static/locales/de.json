@@ -474,5 +474,8 @@
   "connector_share_code_copy_failed": "Kopieren fehlgeschlagen",
   "connector_share_code_regenerate": "Neuer Code",
   "connector_share_code_regenerate_confirm": "Neuen Code erzeugen? Der alte Code wird ungültig, bereits angenommene Freigaben bleiben.",
-  "connector_share_code_hint": "Senden Sie diesen Code dem Autor einer View, damit er sie mit diesem Konnektor teilen kann."
+  "connector_share_code_hint": "Senden Sie diesen Code dem Autor einer View, damit er sie mit diesem Konnektor teilen kann.",
+  "chart_loading": "Diagrammdaten werden geladen…",
+  "chart_load_error": "Diagrammdaten konnten nicht geladen werden: {error}",
+  "chart_truncated_note": "Die ersten {count} Achsenwerte werden angezeigt"
 }

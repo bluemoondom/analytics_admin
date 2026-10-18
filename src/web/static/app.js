@@ -381,6 +381,71 @@
     ],
   };
 
+  // ------------------------------------------------------------------
+  // Colour strength ("sytost"): CIELAB chroma weighted by depth (100 - L*).
+  // Saturated, deep colours score high; pale and yellow tones score low, so a
+  // chart's first series is always clearly visible on a white background.
+  // ------------------------------------------------------------------
+  function parseRgb(color) {
+    const str = String(color || '').trim();
+    const hex = str.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+    if (hex) {
+      const h = hex[1].length === 3 ? hex[1].split('').map(ch => ch + ch).join('') : hex[1];
+      return [0, 2, 4].map(k => parseInt(h.slice(k, k + 2), 16));
+    }
+    const m = str.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
+    return m ? m.slice(1, 4).map(Number) : [0, 0, 0];
+  }
+
+  function colorLab(color) {
+    const lin = v => { v /= 255; return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+    const [r, g, b] = parseRgb(color).map(lin);
+    const f = t => (t > 0.008856 ? Math.cbrt(t) : 7.787 * t + 16 / 116);
+    const fx = f((0.4124 * r + 0.3576 * g + 0.1805 * b) / 0.95047);
+    const fy = f(0.2126 * r + 0.7152 * g + 0.0722 * b);
+    const fz = f((0.0193 * r + 0.1192 * g + 0.9505 * b) / 1.08883);
+    return [116 * fy - 16, 500 * (fx - fy), 200 * (fy - fz)];
+  }
+
+  function colorStrength(color) {
+    const [L, a, b] = colorLab(color);
+    return Math.hypot(a, b) * (100 - L) / 100;
+  }
+
+  function averageStrength(colors) {
+    return colors.length ? colors.reduce((acc, c) => acc + colorStrength(c), 0) / colors.length : 0;
+  }
+
+  // Order a palette by strength while keeping neighbouring series apart: the
+  // strongest colour goes first, each next one is the strongest colour that is
+  // also perceptually distant (CIE76 distance, full weight from 45 up) from all
+  // colours already picked. Pure strength order would put e.g. two blues next
+  // to each other as series 1 and 2.
+  function orderByStrength(colors) {
+    const rest = colors.map(c => ({ c, s: colorStrength(c), lab: colorLab(c) }))
+      .sort((x, y) => y.s - x.s);
+    const picked = rest.length ? [rest.shift()] : [];
+    while (rest.length) {
+      let bestIdx = 0;
+      let bestScore = -Infinity;
+      rest.forEach((item, idx) => {
+        const nearest = Math.min(...picked.map(p => Math.hypot(
+          item.lab[0] - p.lab[0], item.lab[1] - p.lab[1], item.lab[2] - p.lab[2])));
+        const score = item.s * Math.min(1, nearest / 45);
+        if (score > bestScore) { bestScore = score; bestIdx = idx; }
+      });
+      picked.push(rest.splice(bestIdx, 1)[0]);
+    }
+    return picked.map(item => item.c);
+  }
+
+  // Strongest colour first in every chart scheme (DEFAULT_COLORS is reordered
+  // too, being the same array as COLOR_SCHEMES.default).
+  Object.values(COLOR_SCHEMES).forEach(colors => {
+    const ordered = orderByStrength(colors);
+    colors.splice(0, colors.length, ...ordered);
+  });
+
   let state = {
     dashboards: [],
     views: [],
@@ -390,6 +455,10 @@
     chartInstances: {},
     aliasColumn: null,
     expandedChart: null,
+    // Server-side chart data: request key -> { rows, truncated, error, generation }.
+    chartCache: new Map(),
+    chartGeneration: 0,
+    chartRequests: new Set(),
   };
 
   const $ = (sel) => document.querySelector(sel);
@@ -764,6 +833,8 @@
     const trigger = $('#color-scheme-trigger');
     const optionsEl = $('#color-scheme-options');
     if (!hidden || !container || !trigger || !optionsEl) return;
+    // Schemes from the strongest colours to the palest ones; "default" stays first.
+    sortSelectOptions(hidden, v => averageStrength(COLOR_SCHEMES[v] || DEFAULT_COLORS));
 
     function renderOptions() {
       optionsEl.innerHTML = '';
@@ -943,6 +1014,16 @@
     updateTrigger();
   }
 
+  function sortSelectOptions(select, score, groupOf = () => 0) {
+    // Keep the first option ("default") on top; order the rest by group, then by score.
+    const opts = [...select.querySelectorAll('option')];
+    if (opts.length < 3) return;
+    const [first, ...rest] = opts;
+    rest.sort((a, b) => (groupOf(a.value) - groupOf(b.value)) || (score(b.value) - score(a.value)));
+    select.appendChild(first);
+    rest.forEach(o => select.appendChild(o));
+  }
+
   function bindTableThemeSelect() {
     const hidden = $('#setting-table-theme');
     const container = $('#table-theme-select');
@@ -963,6 +1044,8 @@
       accent_plum: '#4a1e3b',
       accent_charcoal: '#2d3748',
     };
+    // Full-table themes first, then the "header and column" accents; strongest colour first.
+    sortSelectOptions(hidden, v => colorStrength(swatches[v] || '#f3f4f6'), v => (v.startsWith('accent_') ? 1 : 0));
 
     function renderOptions() {
       optionsEl.innerHTML = '';
@@ -1161,6 +1244,7 @@
     };
     state.columns = [];
     state.chartInstances = {};
+    state.chartCache = new Map();
     state.kpiValues = {};
     $('#empty-state').classList.add('hidden');
     $('#builder').classList.remove('hidden');
@@ -1183,6 +1267,7 @@
     const dash = await api('GET', '/' + id);
     state.currentDashboard = dash;
     state.chartInstances = {};
+    state.chartCache = new Map();
     state.kpiValues = {};
     $('#empty-state').classList.add('hidden');
     $('#builder').classList.remove('hidden');
@@ -1922,6 +2007,7 @@
   async function refreshData() {
     const dash = state.currentDashboard;
     if (!dash.view_name) return;
+    state.chartGeneration += 1;
     if (!dash.visible_columns.length) {
       clearTable();
       $('#row-count').textContent = t('select_at_least_one_column');
@@ -2957,7 +3043,8 @@
     const list = $('#chart-list');
     list.innerHTML = '';
     updateChartsPerRowStyle();
-    if (!(state.data.rows || []).length) return;
+    if (!state.currentDashboard || !state.currentDashboard.view_name) return;
+    requestMissingChartData();
     const expanded = state.expandedChart;
     if (expanded !== null) {
       list.classList.add('has-expanded');
@@ -2985,14 +3072,33 @@
       card.appendChild(legendContainer);
       list.appendChild(card);
 
+      const entry = state.chartCache.get(chartRequestKey(chart));
+      if (!entry) {
+        chartArea.appendChild(chartMessage(t('chart_loading')));
+        return;
+      }
+      if (entry.error) {
+        chartArea.appendChild(chartMessage(t('chart_load_error', { error: entry.error }), true));
+        return;
+      }
+      if (entry.truncated) {
+        const note = document.createElement('p');
+        note.className = 'chart-note';
+        note.textContent = t('chart_truncated_note', { count: entry.rows.length });
+        card.appendChild(note);
+      }
+      // Server rows are already aggregated per X (and split) value; draw them with
+      // neutral column names so every chart type reuses its existing drawing code.
+      const drawable = serverChart(chart);
+      const rows = entry.rows;
       if (chart.chart_type === 'gauge') {
-        drawGauge(canvas, chart, getChartRows(chart));
+        drawGauge(canvas, drawable, rows);
       } else if (chart.chart_type === 'funnel') {
-        drawFunnel(canvas, chart, getChartRows(chart));
+        drawFunnel(canvas, drawable, rows);
       } else if (chart.chart_type === 'scatter') {
-        drawScatter(canvas, chart, legendContainer, getChartRows(chart));
+        drawScatter(canvas, drawable, legendContainer, rows);
       } else {
-        drawChart(canvas, chart, legendContainer, getChartRows(chart));
+        drawChart(canvas, drawable, legendContainer, rows);
       }
     });
 
@@ -3007,6 +3113,92 @@
     });
     const closeBtn = $('#close-expanded-chart');
     if (closeBtn) closeBtn.addEventListener('click', closeExpandedChart);
+  }
+
+  // ------------------------------------------------------------------
+  // Server-side chart data
+  // ------------------------------------------------------------------
+  function chartSeries(chart) {
+    if (chart.series && chart.series.length) return chart.series;
+    return chart.y_column ? [{ y_column: chart.y_column, aggregation: chart.aggregation || 'sum', label: '' }] : [];
+  }
+
+  function chartRequestKey(chart) {
+    const dash = state.currentDashboard;
+    return JSON.stringify([
+      dash.view_name,
+      collectFilters(),
+      dash.replace_null_with_empty !== false,
+      chart.chart_type === 'scatter',
+      chart.x_column,
+      chart.split_by_column && chart.split_by_column !== chart.x_column ? chart.split_by_column : '',
+      chartSeries(chart).map(s => [s.y_column, s.aggregation || 'sum']),
+    ]);
+  }
+
+  function serverChart(chart) {
+    // Map the chart onto the server row layout: x, split, s0, s1, ...
+    const hasSplit = chart.split_by_column && chart.split_by_column !== chart.x_column;
+    return {
+      ...chart,
+      x_column: 'x',
+      split_by_column: hasSplit ? 'split' : '',
+      series: chartSeries(chart).map((s, i) => ({
+        ...s,
+        y_column: 's' + i,
+        aggregation: 'sum', // one row per group: re-aggregating with sum keeps the value
+        label: s.label || displayName(s.y_column),
+        _source_column: s.y_column,
+        _source_aggregation: s.aggregation || 'sum',
+      })),
+    };
+  }
+
+  function chartMessage(text, isError) {
+    const el = document.createElement('p');
+    el.className = 'chart-message' + (isError ? ' error' : '');
+    el.textContent = text;
+    return el;
+  }
+
+  function requestMissingChartData() {
+    const dash = state.currentDashboard;
+    const generation = state.chartGeneration;
+    const pending = [];
+    const seen = new Set();
+    (dash.charts || []).forEach(chart => {
+      if (!chart.x_column || !chartSeries(chart).length) return;
+      const key = chartRequestKey(chart);
+      const entry = state.chartCache.get(key);
+      const requestId = generation + '|' + key;
+      if ((entry && entry.generation >= generation) || state.chartRequests.has(requestId) || seen.has(key)) return;
+      seen.add(key);
+      pending.push({ chart, key, requestId });
+    });
+    if (!pending.length) return;
+    pending.forEach(p => state.chartRequests.add(p.requestId));
+    const viewName = dash.view_name;
+    api('POST', '/chart-data', {
+      view_name: viewName,
+      filters: collectFilters(),
+      replace_null_with_empty: dash.replace_null_with_empty !== false,
+      charts: pending.map(p => ({
+        chart_type: p.chart.chart_type,
+        x_column: p.chart.x_column,
+        split_by_column: p.chart.split_by_column || '',
+        series: chartSeries(p.chart).map(s => ({ y_column: s.y_column, aggregation: s.aggregation || 'sum' })),
+      })),
+    }).then(res => {
+      (res.charts || []).forEach((data, i) => {
+        state.chartCache.set(pending[i].key, { ...data, rows: data.rows || [], generation });
+      });
+    }).catch(err => {
+      pending.forEach(p => state.chartCache.set(p.key, { rows: [], error: err.message, generation }));
+    }).finally(() => {
+      pending.forEach(p => state.chartRequests.delete(p.requestId));
+      // Redraw only if the user is still looking at the same view.
+      if (state.currentDashboard && state.currentDashboard.view_name === viewName) renderCharts();
+    });
   }
 
   function getChartRows(chart) {
@@ -3327,7 +3519,7 @@
       ctx.fillStyle = '#111827';
       ctx.font = 'bold 20px sans-serif';
       ctx.textAlign = 'center';
-      const isInt = isIntegerColumn(s.y_column);
+      const isInt = isIntegerColumn(s._source_column || s.y_column);
       const label = s.label || s.y_column;
       ctx.fillText(formatNumber(total, nf, isInt), cx, cy - radius * 0.25);
       ctx.font = '12px sans-serif';
@@ -3371,7 +3563,7 @@
     const scheme = COLOR_SCHEMES[dash.color_scheme || 'default'] || DEFAULT_COLORS;
     const colors = [...scheme].map(c => c.replace('0.7', '1'));
     const nf = dash.number_format || '#,##0.00';
-    const isInt = agg === 'count' || isIntegerColumn(s.y_column);
+    const isInt = (s._source_aggregation || agg) === 'count' || isIntegerColumn(s._source_column || s.y_column);
     const textColor = getComputedStyle(canvas).color || '#111827';
     const font = '12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
 

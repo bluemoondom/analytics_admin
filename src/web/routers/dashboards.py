@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from src.web.auth import require_user
 from src.web.models.dashboard import (
+    ChartDataRequest,
     Dashboard,
     DashboardSummary,
     DataQueryRequest,
@@ -18,6 +19,7 @@ from src.web.services.query import (
     dashboard_to_query_payload,
     describe_view,
     discover_views,
+    run_chart_queries,
     run_data_query,
     run_kpi_query,
 )
@@ -60,6 +62,12 @@ def get_views(user: Annotated[User, Depends(require_user)]):
 def get_view_columns(view_name: str, user: Annotated[User, Depends(require_user)]):
     """Return columns for the selected view using the user's connector."""
     return describe_view(view_name, connector=_user_connector(user))
+
+
+@router.post("/chart-data", response_model=dict[str, Any])
+def query_chart_data(payload: ChartDataRequest, user: Annotated[User, Depends(require_user)]):
+    """Aggregate chart data on the server for the given (unsaved) chart definitions."""
+    return {"charts": run_chart_queries(payload, connector=_user_connector(user))}
 
 
 @router.post("/data", response_model=dict[str, Any])

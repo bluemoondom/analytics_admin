@@ -12,8 +12,9 @@ load_dotenv()
 
 DEFAULT_CSP_POLICY = (
     "default-src 'self' blob:; "
-    "script-src 'self' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; "
-    "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; "
+    # Chart.js and jsPDF are served from /static/vendor, so no CDN is needed.
+    "script-src 'self'; "
+    "style-src 'self' 'unsafe-inline'; "
     "img-src 'self' data: blob:; "
     "connect-src 'self'; "
     "font-src 'self' data:; "

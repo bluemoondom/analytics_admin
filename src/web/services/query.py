@@ -4,8 +4,14 @@ from __future__ import annotations
 
 from typing import Any
 
-from src.web.db import fetch_data, get_columns, list_views
-from src.web.models.dashboard import Dashboard, DashboardKpiCard, DataQueryRequest
+from src.web.db import DatabaseError, fetch_chart_data, fetch_data, get_columns, list_views
+from src.web.models.dashboard import (
+    ChartDataRequest,
+    Dashboard,
+    DashboardFilter,
+    DashboardKpiCard,
+    DataQueryRequest,
+)
 
 
 def discover_views(connector=None) -> list[dict[str, Any]]:
@@ -36,10 +42,10 @@ def describe_view(view_name: str, connector=None) -> dict[str, Any]:
     }
 
 
-def run_data_query(payload: DataQueryRequest, connector=None) -> dict[str, Any]:
-    """Execute an ad-hoc data query from the UI."""
+def _filters_to_dict(items: list[DashboardFilter]) -> dict[str, list[dict[str, Any]]]:
+    """Convert dashboard filter entries to the column -> conditions mapping of fetch_data."""
     filters: dict[str, list[dict[str, Any]]] = {}
-    for f in payload.filters:
+    for f in items:
         entry: dict[str, Any] = {
             "operator": f.operator,
             "value": f.value,
@@ -49,6 +55,12 @@ def run_data_query(payload: DataQueryRequest, connector=None) -> dict[str, Any]:
             "to_value": f.to_value,
         }
         filters.setdefault(f.column, []).append(entry)
+    return filters
+
+
+def run_data_query(payload: DataQueryRequest, connector=None) -> dict[str, Any]:
+    """Execute an ad-hoc data query from the UI."""
+    filters = _filters_to_dict(payload.filters)
 
     result = fetch_data(
         view_name=payload.view_name,
@@ -70,6 +82,35 @@ def run_data_query(payload: DataQueryRequest, connector=None) -> dict[str, Any]:
         connector=connector,
     )
     return result
+
+
+def run_chart_queries(payload: ChartDataRequest, connector=None) -> list[dict[str, Any]]:
+    """Aggregate data for each chart in the database (one query per chart).
+
+    A failing chart returns an ``error`` entry instead of breaking the others.
+    """
+    filters = _filters_to_dict(payload.filters)
+    results: list[dict[str, Any]] = []
+    for chart in payload.charts:
+        series = [{"y_column": s.y_column, "aggregation": s.aggregation} for s in chart.series]
+        if not series and chart.y_column:
+            series = [{"y_column": chart.y_column, "aggregation": chart.aggregation}]
+        try:
+            results.append(fetch_chart_data(
+                payload.view_name,
+                x_column=chart.x_column,
+                series=series,
+                split_by_column=chart.split_by_column,
+                chart_type=chart.chart_type,
+                filters=filters,
+                replace_null_with_empty=payload.replace_null_with_empty,
+                connector=connector,
+            ))
+        except DatabaseError as exc:
+            results.append({"rows": [], "truncated": False, "error": str(exc)})
+        except Exception as exc:  # driver errors (pyodbc, sqlite, ...)
+            results.append({"rows": [], "truncated": False, "error": f"Chart query failed: {exc}"})
+    return results
 
 
 def dashboard_to_query_payload(dashboard: Dashboard) -> DataQueryRequest:

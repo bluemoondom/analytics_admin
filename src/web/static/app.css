@@ -2046,6 +2046,9 @@ body.theme-bg-black .rp-accordion-header:hover { background: #374151; }
   justify-content: center;
 }
 .modal.hidden { display: none; }
+/* Global: elements marked .hidden are not displayed. Legend items are the exception:
+   there .hidden marks a series toggled off, which is shown dimmed instead. */
+.hidden:not(.legend-item) { display: none !important; }
 .modal-backdrop {
   position: absolute;
   inset: 0;
@@ -2841,3 +2844,9 @@ body.theme-bg-black .share-sql { background: #1f2937; border-color: #4b5563; col
 body.theme-bg-black .share-row { border-color: #374151; }
 body.theme-bg-black .incoming-shares { background: rgba(245, 158, 11, 0.12); border-color: rgba(245, 158, 11, 0.4); }
 body.theme-bg-black .incoming-heading { color: #fcd34d; }
+
+/* Server-side chart data states */
+.chart-message { margin: auto; padding: 1rem; text-align: center; color: var(--muted); font-size: 0.85rem; }
+.chart-message.error { color: #b91c1c; }
+.chart-area:has(.chart-message) { display: flex; }
+.chart-note { margin: 0.25rem 0 0; font-size: 0.75rem; color: var(--muted); text-align: center; }

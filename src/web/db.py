@@ -395,6 +395,110 @@ def _fetchall_as_dicts(cur: Any) -> list[dict[str, Any]]:
     return result
 
 
+def _filter_where(
+    filters: dict[str, Any],
+    columns_info: list[dict[str, Any]],
+    all_columns: list[str],
+    qi,
+    ph: str,
+) -> tuple[str, list[Any]]:
+    """Return ``(" WHERE ...", params)`` for dashboard filters.
+
+    Shared by the table query and the chart queries so both filter identically.
+    Returns an empty string when no filter applies.
+    """
+    params: list[Any] = []
+    where_sql = ""
+    where_clauses: list[str] = []
+    text_conditions: list[tuple[str, str, Any]] = []
+
+    for col, raw in filters.items():
+        if col not in all_columns or raw is None or raw == "":
+            continue
+        col_info = next((c for c in columns_info if c["name"] == col), None)
+        col_type = col_info["type"] if col_info else "text"
+        is_text_storage = col_info.get("is_text_storage") if col_info else False
+
+        # Normalize to a list of condition dicts.
+        conditions: list[dict[str, Any]]
+        if isinstance(raw, list):
+            conditions = raw
+        else:
+            conditions = [{"operator": "=", "value": raw}]
+
+        for cond in conditions:
+            operator = (cond.get("operator") or "").strip().lower() or "="
+            value = cond.get("value")
+
+            if col_type == "number":
+                min_value = cond.get("min_value", cond.get("min"))
+                max_value = cond.get("max_value", cond.get("max"))
+                if min_value not in (None, ""):
+                    where_clauses.append(f"{qi(col)} >= {ph}")
+                    params.append(
+                        str(min_value).strip()
+                        if is_text_storage
+                        else _coerce_number(min_value)
+                    )
+                if max_value not in (None, ""):
+                    where_clauses.append(f"{qi(col)} <= {ph}")
+                    params.append(
+                        str(max_value).strip()
+                        if is_text_storage
+                        else _coerce_number(max_value)
+                    )
+            elif col_type == "date":
+                from_value = cond.get("from_value", cond.get("from"))
+                to_value = cond.get("to_value", cond.get("to"))
+                if from_value not in (None, ""):
+                    where_clauses.append(f"{qi(col)} >= {ph}")
+                    params.append(from_value)
+                if to_value not in (None, ""):
+                    where_clauses.append(f"{qi(col)} <= {ph}")
+                    params.append(to_value)
+            else:
+                if value is None or value == "":
+                    continue
+                str_value = str(value)
+                like_wildcards = "%" in str_value or "_" in str_value
+                if operator in {"contains", "not_contains"}:
+                    op_sql = "LIKE" if operator == "contains" else "NOT LIKE"
+                    text_conditions.append(("not" if operator == "not_contains" else "or", f"{qi(col)} {op_sql} {ph}", f"%{str_value}%"))
+                elif like_wildcards:
+                    text_conditions.append(("or", f"{qi(col)} LIKE {ph}", str_value))
+                else:
+                    text_conditions.append(("or", f"{qi(col)} = {ph}", str_value))
+
+    # Build WHERE clause. Text filters are grouped by column into two brackets:
+    # - positive conditions (=, contains, like_wildcards) are joined with OR
+    # - negative conditions (not_contains) are joined with AND
+    # each group is parenthesized and the groups for a column are ANDed together.
+    text_groups: dict[str, dict[str, list[tuple[str, Any]]]] = {}
+    for mode, clause, param in text_conditions:
+        col_name = clause.split(" ", 1)[0].strip('[]"`')
+        text_groups.setdefault(col_name, {}).setdefault(mode, []).append((clause, param))
+
+    final_clauses: list[str] = []
+    text_params: list[Any] = []
+    for col_name, groups in text_groups.items():
+        col_sql_parts: list[str] = []
+        for mode in ("or", "not"):
+            conds = groups.get(mode, [])
+            if not conds:
+                continue
+            clause_sql = " OR ".join(c[0] for c in conds) if mode == "or" else " AND ".join(c[0] for c in conds)
+            text_params.extend(c[1] for c in conds)
+            col_sql_parts.append(f"({clause_sql})")
+        if col_sql_parts:
+            final_clauses.append(" AND ".join(col_sql_parts))
+
+    final_clauses.extend(where_clauses)
+    if final_clauses:
+        where_sql = " WHERE " + " AND ".join(final_clauses)
+    params = text_params + params
+    return where_sql, params
+
+
 def fetch_data(
     view_name: str,
     filters: dict[str, Any] | None = None,
@@ -493,94 +597,8 @@ def fetch_data(
 
     source_sql = f"({def_view}) AS sq" if def_view else sanitized_view
     sql = f"SELECT {select_sql} FROM {source_sql}"
-    params: list[Any] = []
-    where_clauses: list[str] = []
-    text_conditions: list[tuple[str, str, Any]] = []
-
-    for col, raw in filters.items():
-        if col not in all_columns or raw is None or raw == "":
-            continue
-        col_info = next((c for c in columns_info if c["name"] == col), None)
-        col_type = col_info["type"] if col_info else "text"
-        is_text_storage = col_info.get("is_text_storage") if col_info else False
-
-        # Normalize to a list of condition dicts.
-        conditions: list[dict[str, Any]]
-        if isinstance(raw, list):
-            conditions = raw
-        else:
-            conditions = [{"operator": "=", "value": raw}]
-
-        for cond in conditions:
-            operator = (cond.get("operator") or "").strip().lower() or "="
-            value = cond.get("value")
-
-            if col_type == "number":
-                min_value = cond.get("min_value", cond.get("min"))
-                max_value = cond.get("max_value", cond.get("max"))
-                if min_value not in (None, ""):
-                    where_clauses.append(f"{qi(col)} >= {ph}")
-                    params.append(
-                        str(min_value).strip()
-                        if is_text_storage
-                        else _coerce_number(min_value)
-                    )
-                if max_value not in (None, ""):
-                    where_clauses.append(f"{qi(col)} <= {ph}")
-                    params.append(
-                        str(max_value).strip()
-                        if is_text_storage
-                        else _coerce_number(max_value)
-                    )
-            elif col_type == "date":
-                from_value = cond.get("from_value", cond.get("from"))
-                to_value = cond.get("to_value", cond.get("to"))
-                if from_value not in (None, ""):
-                    where_clauses.append(f"{qi(col)} >= {ph}")
-                    params.append(from_value)
-                if to_value not in (None, ""):
-                    where_clauses.append(f"{qi(col)} <= {ph}")
-                    params.append(to_value)
-            else:
-                if value is None or value == "":
-                    continue
-                str_value = str(value)
-                like_wildcards = "%" in str_value or "_" in str_value
-                if operator in {"contains", "not_contains"}:
-                    op_sql = "LIKE" if operator == "contains" else "NOT LIKE"
-                    text_conditions.append(("not" if operator == "not_contains" else "or", f"{qi(col)} {op_sql} {ph}", f"%{str_value}%"))
-                elif like_wildcards:
-                    text_conditions.append(("or", f"{qi(col)} LIKE {ph}", str_value))
-                else:
-                    text_conditions.append(("or", f"{qi(col)} = {ph}", str_value))
-
-    # Build WHERE clause. Text filters are grouped by column into two brackets:
-    # - positive conditions (=, contains, like_wildcards) are joined with OR
-    # - negative conditions (not_contains) are joined with AND
-    # each group is parenthesized and the groups for a column are ANDed together.
-    text_groups: dict[str, dict[str, list[tuple[str, Any]]]] = {}
-    for mode, clause, param in text_conditions:
-        col_name = clause.split(" ", 1)[0].strip('[]"`')
-        text_groups.setdefault(col_name, {}).setdefault(mode, []).append((clause, param))
-
-    final_clauses: list[str] = []
-    text_params: list[Any] = []
-    for col_name, groups in text_groups.items():
-        col_sql_parts: list[str] = []
-        for mode in ("or", "not"):
-            conds = groups.get(mode, [])
-            if not conds:
-                continue
-            clause_sql = " OR ".join(c[0] for c in conds) if mode == "or" else " AND ".join(c[0] for c in conds)
-            text_params.extend(c[1] for c in conds)
-            col_sql_parts.append(f"({clause_sql})")
-        if col_sql_parts:
-            final_clauses.append(" AND ".join(col_sql_parts))
-
-    final_clauses.extend(where_clauses)
-    if final_clauses:
-        sql += " WHERE " + " AND ".join(final_clauses)
-    params = text_params + params
+    where_sql, params = _filter_where(filters, columns_info, all_columns, qi, ph)
+    sql += where_sql
 
     if group_cols:
         sql += " GROUP BY " + ", ".join(qi(c) for c in group_cols)
@@ -659,6 +677,110 @@ def fetch_data(
         "color_numeric_sign": color_numeric_sign,
         "row_limit": row_limit,
     }
+
+
+CHART_MAX_GROUPS = 5000
+CHART_MAX_POINTS = 5000
+_CHART_AGGREGATIONS = {"sum": "SUM", "count": "COUNT", "avg": "AVG", "min": "MIN", "max": "MAX"}
+
+
+def fetch_chart_data(
+    view_name: str,
+    *,
+    x_column: str,
+    series: list[dict[str, Any]],
+    split_by_column: str = "",
+    chart_type: str = "bar",
+    filters: dict[str, Any] | None = None,
+    replace_null_with_empty: bool = True,
+    connector=None,
+) -> dict[str, Any]:
+    """Aggregate chart data in the database over the whole (filtered) view.
+
+    Rows are grouped by the X column (and the split column, if any); each
+    series becomes one aggregate named ``__s{index}``. Unlike the table, no row
+    limit applies, so totals are correct for views of any size. Scatter charts
+    return raw points instead of aggregates. Results are capped at
+    ``CHART_MAX_GROUPS`` groups / ``CHART_MAX_POINTS`` points and flagged as
+    ``truncated`` when the cap is hit.
+    """
+    from src.web.dialects import dialect_for_connector
+
+    dialect = dialect_for_connector(connector)
+    qi = dialect.quote_identifier
+    ph = dialect.param_placeholder
+    def_view = _def_view_for(view_name, connector)
+    columns_info = _columns_for_view(view_name, connector, def_view)
+    all_columns = [c["name"] for c in columns_info]
+    col_types = {c["name"]: c.get("type", "text") for c in columns_info}
+
+    if x_column not in all_columns:
+        raise DatabaseError(f"Unknown chart column: {x_column!r}")
+    split = split_by_column if split_by_column and split_by_column in all_columns and split_by_column != x_column else ""
+    dims = [x_column] + ([split] if split else [])
+    series = [s for s in series if s.get("y_column") in all_columns]
+    if not series:
+        return {"rows": [], "truncated": False, "dimensions": dims}
+
+    source_sql = f"({def_view}) AS sq" if def_view else qi(_sanitize_view_name(view_name))
+    where_sql, params = _filter_where(filters or {}, columns_info, all_columns, qi, ph)
+
+    def series_alias(i: int) -> str:
+        return qi(f"__s{i}")
+
+    if chart_type == "scatter":
+        select_parts = [f"{qi(x_column)} AS {qi('__x')}"] + [
+            f"{qi(s['y_column'])} AS {series_alias(i)}" for i, s in enumerate(series)
+        ]
+        limit = CHART_MAX_POINTS
+        order_sql = f" ORDER BY {qi(x_column)} ASC"
+        group_sql = ""
+    else:
+        select_parts = [f"{qi(x_column)} AS {qi('__x')}"]
+        if split:
+            select_parts.append(f"{qi(split)} AS {qi('__split')}")
+        for i, s in enumerate(series):
+            agg = _CHART_AGGREGATIONS.get(str(s.get("aggregation") or "sum").lower(), "SUM")
+            col = qi(s["y_column"])
+            if agg == "COUNT":
+                expr = f"COUNT({col})"
+            elif col_types.get(s["y_column"]) == "date":
+                # Dates only have a meaningful MIN / MAX; SUM / AVG of dates yields no value.
+                expr = f"{agg}({col})" if agg in ("MIN", "MAX") else "NULL"
+            else:
+                # TRY_CAST keeps numeric aggregates working on text-stored numbers.
+                expr = f"{agg}({dialect.try_cast_to_float(col)})"
+            select_parts.append(f"{expr} AS {series_alias(i)}")
+        limit = CHART_MAX_GROUPS
+        group_sql = " GROUP BY " + ", ".join(qi(c) for c in dims)
+        order_sql = " ORDER BY " + ", ".join(f"{qi(c)} ASC" for c in dims)
+
+    sql = f"SELECT {', '.join(select_parts)} FROM {source_sql}{where_sql}{group_sql}{order_sql}"
+    # Fetch one extra row to detect truncation.
+    if dialect.name == "mssql":
+        sql += f" OFFSET 0 ROWS FETCH NEXT {ph} ROWS ONLY"
+    else:
+        sql += f" LIMIT {ph}"
+    params = list(params) + [limit + 1]
+
+    with _conn_with_cursor(connector) as (_conn, cur):
+        cur.execute(sql, tuple(params))
+        raw_rows = _fetchall_as_dicts(cur)
+
+    truncated = len(raw_rows) > limit
+    rows: list[dict[str, Any]] = []
+    for r in raw_rows[:limit]:
+        row: dict[str, Any] = {"x": r.get("__x")}
+        if split:
+            row["split"] = r.get("__split")
+        for i in range(len(series)):
+            row[f"s{i}"] = r.get(f"__s{i}")
+        if replace_null_with_empty:
+            for key in ("x", "split"):
+                if key in row and row[key] is None:
+                    row[key] = ""
+        rows.append(row)
+    return {"rows": rows, "truncated": truncated, "dimensions": dims}
 
 
 def _sanitize_view_name(name: str) -> str:

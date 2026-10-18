@@ -156,6 +156,15 @@ class DataQueryRequest(BaseModel):
 
 
 
+class ChartDataRequest(BaseModel):
+    """Request body for server-side chart aggregation."""
+
+    view_name: str
+    filters: list[DashboardFilter] = Field(default_factory=list)
+    replace_null_with_empty: bool = True
+    charts: list[DashboardChart] = Field(default_factory=list)
+
+
 class DataQueryResponse(BaseModel):
     """Response body for ad-hoc table data."""
 

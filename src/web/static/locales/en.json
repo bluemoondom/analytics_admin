@@ -474,5 +474,8 @@
   "connector_share_code_copy_failed": "Copy failed",
   "connector_share_code_regenerate": "New code",
   "connector_share_code_regenerate_confirm": "Generate a new code? The old code stops working; shares already accepted remain.",
-  "connector_share_code_hint": "Send this code to the author of a view so they can share it to this connector."
+  "connector_share_code_hint": "Send this code to the author of a view so they can share it to this connector.",
+  "chart_loading": "Loading chart data…",
+  "chart_load_error": "Chart data could not be loaded: {error}",
+  "chart_truncated_note": "Showing the first {count} axis values"
 }
