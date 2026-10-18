@@ -1,4 +1,5 @@
 # Business Intelligence Analytics Admin — Features
+## You can create a chart or pivot table faster than it takes to type it into AI
 
 ## Overview
 
