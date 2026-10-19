@@ -64,7 +64,7 @@
   "chart_x_axis_placeholder": "z. B. Monat",
   "chart_y_axis_label": "Y-Achsenbeschriftung",
   "chart_y_axis_placeholder": "z. B. Umsatz (CZK)",
-  "add_series_button": "+ Reihe hinzufügen",
+  "add_series_button": "Reihe hinzufügen",
   "add_chart_button": "Diagramm hinzufügen",
   "more_settings_heading": "Weitere Einstellungen",
   "kpi_heading": "KPI-Karten",
@@ -299,7 +299,7 @@
   "number_max_placeholder": "max",
   "date_from_placeholder": "von",
   "date_to_placeholder": "bis",
-  "text_filter_add_button": "+ Bedingung",
+  "text_filter_add_button": "Bedingung hinzufügen",
   "text_filter_remove_title": "Entfernen",
   "text_filter_value_placeholder": "Wert (verwenden Sie % oder _)",
   "text_filter_operator_equals": "=",
@@ -544,5 +544,11 @@
   "lineage_view_not_modeled": "Das View wurde nicht in der View-Modellierung erstellt, seine Definition ist hier nicht verfügbar.",
   "kpi_aggregation_first": "Letzter Wert (erste Tabellenzeile)",
   "kpi_first_hint": "Nimmt den Wert aus der ersten Tabellenzeile, so wie die Tabelle gerade sortiert (auch nach mehreren Spalten) und gruppiert ist. Beim Vergleich mit derselben Spalte wird die zweite Zeile verwendet, z. B. dieser Monat gegenüber dem Vormonat.",
-  "kpi_first_value_title": "Wert aus der ersten Tabellenzeile"
+  "kpi_first_value_title": "Wert aus der ersten Tabellenzeile",
+  "series_remove_title": "Reihe entfernen",
+  "remove_table_title": "Tabelle aus dem View entfernen",
+  "table_nav_prev": "Vorherige Spalte (←)",
+  "table_nav_next": "Nächste Spalte (→)",
+  "table_nav_scrollbar": "Tabelle seitlich verschieben",
+  "table_nav_info": "Spalten {from}–{to} von {total}"
 }

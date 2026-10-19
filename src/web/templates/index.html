@@ -205,7 +205,14 @@
 
           <div class="panel data-panel">
             <h3 data-i18n="data_heading">Data</h3>
-            <div class="table-wrap">
+            <!-- Shown only for tables wider than the panel: column arrows and a scrollbar on top. -->
+            <div id="table-nav" class="table-nav hidden">
+              <button type="button" id="table-nav-prev" class="table-nav-btn"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button>
+              <div id="table-nav-track" class="table-nav-track"><div class="table-nav-spacer"></div></div>
+              <button type="button" id="table-nav-next" class="table-nav-btn"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
+              <span id="table-nav-info" class="table-nav-info" aria-live="polite"></span>
+            </div>
+            <div id="table-wrap" class="table-wrap" tabindex="0">
               <table id="data-table" class="data-table">
                 <thead></thead>
                 <tbody></tbody>
@@ -308,7 +315,7 @@
                     </label>
                   </div>
                   <div class="form-row">
-                    <label class="inline">
+                    <label class="inline checkbox-label">
                       <input type="checkbox" id="kpi-compare">
                       <span data-i18n="kpi_compare_checkbox">Porovnat s minulým obdobím</span>
                     </label>
@@ -319,7 +326,7 @@
                     </label>
                   </div>
                   <div class="form-row">
-                    <button id="add-kpi" class="btn primary" type="button" data-i18n="add_kpi_button">Přidat KPI kartu</button>
+                    <button id="add-kpi" class="btn primary btn-add" type="button"><span class="btn-add-plus" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></span><span data-i18n="add_kpi_button">Přidat KPI kartu</span></button>
                   </div>
                 </div>
               </div>
@@ -374,8 +381,8 @@
                   <div id="chart-series-list" class="chart-series-list"></div>
 
                   <div class="form-actions">
-                    <button id="add-series" class="btn" type="button" data-i18n="add_series_button">+ Přidat řadu</button>
-                    <button id="add-chart" class="btn primary" type="button" data-i18n="add_chart_button">Přidat graf</button>
+                    <button id="add-series" class="btn btn-add" type="button"><span class="btn-add-plus" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></span><span data-i18n="add_series_button">Přidat řadu</span></button>
+                    <button id="add-chart" class="btn primary btn-add" type="button"><span class="btn-add-plus" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></span><span data-i18n="add_chart_button">Přidat graf</span></button>
                   </div>
                 </div>
               </div>

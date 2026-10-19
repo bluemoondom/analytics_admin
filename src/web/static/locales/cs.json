@@ -64,7 +64,7 @@
   "chart_x_axis_placeholder": "např. Měsíc",
   "chart_y_axis_label": "Popisek osy Y",
   "chart_y_axis_placeholder": "např. Obrat (Kč)",
-  "add_series_button": "+ Přidat řadu",
+  "add_series_button": "Přidat řadu",
   "add_chart_button": "Přidat graf",
   "more_settings_heading": "Více nastavení",
   "kpi_heading": "KPI karty",
@@ -299,7 +299,7 @@
   "number_max_placeholder": "max",
   "date_from_placeholder": "od",
   "date_to_placeholder": "do",
-  "text_filter_add_button": "+ podmínka",
+  "text_filter_add_button": "Přidat podmínku",
   "text_filter_remove_title": "Odebrat",
   "text_filter_value_placeholder": "hodnota (použijte % nebo _)",
   "text_filter_operator_equals": "=",
@@ -544,5 +544,11 @@
   "lineage_view_not_modeled": "View nevzniklo v Modelování views, jeho definice tu proto není k dispozici.",
   "kpi_aggregation_first": "Poslední hodnota (1. řádek tabulky)",
   "kpi_first_hint": "Vezme hodnotu z prvního řádku tabulky tak, jak je právě seřazená (i podle více sloupců) a seskupená. Při porovnání se stejným sloupcem se použije druhý řádek, např. tento měsíc proti minulému.",
-  "kpi_first_value_title": "Hodnota z prvního řádku tabulky"
+  "kpi_first_value_title": "Hodnota z prvního řádku tabulky",
+  "series_remove_title": "Odebrat řadu",
+  "remove_table_title": "Odebrat tabulku z view",
+  "table_nav_prev": "Předchozí sloupec (←)",
+  "table_nav_next": "Další sloupec (→)",
+  "table_nav_scrollbar": "Posun tabulky do stran",
+  "table_nav_info": "Sloupce {from}–{to} z {total}"
 }

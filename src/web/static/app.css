@@ -1745,15 +1745,29 @@ body.theme-bg-black .rp-accordion-header:hover { background: #374151; }
 .legend-label { white-space: nowrap; }
 
 /* Data table */
-.table-wrap { overflow-x: auto; }
+/* The table scrolls inside a box at most as tall as the window: the horizontal
+   scrollbar and the header row stay visible while reading any row. */
+.table-wrap {
+  overflow: auto;
+  max-height: max(320px, calc(100vh - 170px));
+  overscroll-behavior-x: contain;
+}
+.table-wrap:focus { outline: none; }
+.table-wrap:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 
 .data-table {
   width: 100%;
-  border-collapse: collapse;
+  /* Separate borders: with collapsed borders the frozen column and the sticky
+     header would let the borders of cells scrolling underneath show through. */
+  border-collapse: separate;
+  border-spacing: 0;
+  border-top: 1px solid var(--border);
+  border-left: 1px solid var(--border);
   font-size: 0.85rem;
 }
 .data-table th, .data-table td {
   border: 1px solid var(--border);
+  border-width: 0 1px 1px 0;
   padding: 0.45rem 0.6rem;
   text-align: left;
   white-space: nowrap;
@@ -2022,7 +2036,8 @@ body.theme-bg-black .rp-accordion-header:hover { background: #374151; }
   margin: 0;
 }
 .dashboard-list li {
-  padding: 0.5rem;
+  /* Extra room on top for connectors running above the first row of cards. */
+  padding: 1.1rem 0.5rem 0.5rem;
   border-radius: var(--radius);
   cursor: pointer;
   display: flex;
@@ -2261,28 +2276,47 @@ body.theme-bg-black .rp-accordion-header:hover { background: #374151; }
   left: 0;
   width: 100%;
   height: 100%;
-  z-index: 1;
+  /* Above the cards: connectors run only through the gaps between them. */
+  z-index: 3;
   pointer-events: none;
+  overflow: visible;
 }
 
-.join-svg line {
+.join-svg .join-line {
+  fill: none;
   stroke: var(--primary);
-  stroke-width: 4;
-  pointer-events: stroke;
-  cursor: pointer;
+  stroke-width: 2.5;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  opacity: 0.85;
+  transition: stroke-width 0.12s ease, opacity 0.12s ease;
 }
 
-.join-svg line:hover {
-  stroke-width: 6;
-  stroke: #818cf8;
+.join-svg .join-dot {
+  fill: #fff;
+  stroke: var(--primary);
+  stroke-width: 2;
 }
+
+.join-svg .join-connector.active .join-line {
+  stroke-width: 4;
+  opacity: 1;
+}
+
+.join-svg .join-connector.active .join-dot { fill: var(--primary); }
 
 .join-hitline {
+  fill: none;
   stroke: transparent;
-  stroke-width: 18;
+  stroke-width: 12;
   pointer-events: stroke;
   cursor: pointer;
 }
+
+/* Key columns of a join: a coloured edge, stronger while the connector is hovered. */
+.column-item.join-key { background: rgba(129, 140, 248, 0.09); }
+.column-item.join-key .field-name { color: var(--primary-hover); font-weight: 600; }
+.column-item.join-key-hover { background: rgba(129, 140, 248, 0.22); }
 
 .join-tooltip {
   position: absolute;
@@ -3185,3 +3219,124 @@ body.theme-bg-black .cde-col { color: #e5e7eb; }
 body.theme-bg-black .cde-editor { border-color: #6366f1; background: #111827; }
 body.theme-bg-black .chart-info-pop label.cde-option { color: #e5e7eb; }
 body.theme-bg-black .cip-body mark, body.theme-bg-black .cde-editor mark { background: #854d0e; }
+
+/* ------------------------------------------------------------------
+   Add buttons in the dashboard panel: the same plus tile as
+   "New dashboard" in the sidebar. Remove buttons use .card-icon-btn.
+   ------------------------------------------------------------------ */
+.btn.btn-add { gap: 0.55rem; padding-left: 0.45rem; }
+.btn-add-plus {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  border-radius: 6px;
+  background: var(--primary-hover);
+  color: #fff;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+.btn-add-plus svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2.3; stroke-linecap: round; }
+.btn.small.btn-add { gap: 0.4rem; padding: 0.25rem 0.7rem 0.25rem 0.3rem; }
+.btn.small .btn-add-plus { width: 18px; height: 18px; border-radius: 5px; }
+.btn.small .btn-add-plus svg { width: 12px; height: 12px; }
+.btn.primary.btn-add:hover .btn-add-plus { background: #fff; color: var(--primary-hover); }
+.btn.btn-add:not(.primary):hover { border-color: var(--primary); color: var(--primary-hover); }
+.filter-group .add-text-filter { align-self: flex-start; margin-top: 0.1rem; }
+.chart-series-row .card-icon-btn,
+.text-filter-row .card-icon-btn { align-self: center; }
+
+/* Checkbox with its text on one line (KPI "compare with previous period"). */
+.form-row label.inline.checkbox-label {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+}
+.form-row label.inline.checkbox-label input { width: auto; margin: 0; accent-color: var(--primary-hover); }
+
+/* Colour picker as a rounded swatch. */
+.kpi-form input[type="color"] {
+  width: 46px;
+  height: 34px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+}
+.kpi-form input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+.kpi-form input[type="color"]::-webkit-color-swatch { border: none; border-radius: 5px; }
+.kpi-form input[type="color"]::-moz-color-swatch { border: none; border-radius: 5px; }
+body.theme-bg-black .kpi-form input[type="color"] { background: #111827; border-color: #4b5563; }
+
+/* ------------------------------------------------------------------
+   Wide tables: sticky header, frozen first column, row hover, nav strip
+   ------------------------------------------------------------------ */
+.data-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  box-shadow: inset 0 -1px 0 var(--border);
+}
+/* Rows get an opaque background (zero specificity, so every theme still wins);
+   the frozen cell inherits it and covers the cells scrolling underneath. */
+:where(.data-table tbody tr) { background-color: var(--panel, #fff); }
+:where(.data-table.freeze-first tbody tr > td:first-child:not([colspan])) { background-color: inherit; }
+.data-table.freeze-first thead th:first-child { left: 0; z-index: 3; }
+.data-table.freeze-first tbody tr > td:first-child:not([colspan]) {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  box-shadow: inset -1px 0 0 var(--border), 6px 0 8px -6px rgba(15, 23, 42, 0.25);
+}
+.data-table.freeze-first thead th:first-child {
+  box-shadow: inset 0 -1px 0 var(--border), inset -1px 0 0 var(--border), 6px 0 8px -6px rgba(15, 23, 42, 0.25);
+}
+/* The row under the mouse is tinted across all columns, including the frozen one. */
+.data-table tbody tr:hover > td { box-shadow: inset 0 0 0 9999px rgba(99, 102, 241, 0.07); }
+.data-table.freeze-first tbody tr:hover > td:first-child:not([colspan]) {
+  box-shadow: inset 0 0 0 9999px rgba(99, 102, 241, 0.07), inset -1px 0 0 var(--border), 6px 0 8px -6px rgba(15, 23, 42, 0.25);
+}
+
+.table-nav { display: flex; align-items: center; gap: 0.5rem; margin: 0 0 0.5rem; }
+.table-nav-btn {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  color: #4b5563;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.table-nav-btn svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.table-nav-btn:hover:not(:disabled) { border-color: var(--primary); color: var(--primary-hover); background: #f5f7ff; }
+.table-nav-btn:disabled { opacity: 0.4; cursor: default; }
+.table-nav-btn:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
+.table-nav-track {
+  flex: 1;
+  min-width: 60px;
+  height: 12px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: #a5b4fc #eef2ff;
+}
+.table-nav-track::-webkit-scrollbar { height: 10px; }
+.table-nav-track::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+.table-nav-track::-webkit-scrollbar-track { background: #eef2ff; border-radius: 6px; }
+.table-nav-track::-webkit-scrollbar-thumb { background: #a5b4fc; border-radius: 6px; }
+.table-nav-track::-webkit-scrollbar-thumb:hover { background: var(--primary-hover); }
+.table-nav-spacer { height: 1px; }
+.table-nav-info { min-width: 9.5rem; font-size: 0.78rem; color: var(--muted); text-align: right; white-space: nowrap; }
+body.theme-bg-black .table-nav-btn { background: #1f2937; border-color: #4b5563; color: #e5e7eb; }
+body.theme-bg-black .table-nav-btn:hover:not(:disabled) { background: #312e81; color: #e0e7ff; }
+body.theme-bg-black .table-nav-track { scrollbar-color: #6366f1 #1f2937; }
+body.theme-bg-black .table-nav-track::-webkit-scrollbar-track { background: #1f2937; }
+body.theme-bg-black .table-nav-track::-webkit-scrollbar-thumb { background: #6366f1; }
+body.theme-bg-black .data-table tbody tr:hover > td { box-shadow: inset 0 0 0 9999px rgba(165, 180, 252, 0.1); }

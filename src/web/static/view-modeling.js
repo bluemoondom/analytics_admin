@@ -1219,7 +1219,7 @@
             <input type="radio" name="primary-table-radio" ${table.isPrimary ? 'checked' : ''} data-table="${esc(table.name)}">
             ${esc(t('primary_table_label'))}
           </label>
-          <button type="button" class="btn small danger remove-table" data-table="${esc(table.name)}">×</button>
+          <button type="button" class="card-icon-btn danger small remove-table" data-table="${esc(table.name)}" title="${esc(t('remove_table_title'))}" aria-label="${esc(t('remove_table_title'))}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17"/></svg></button>
         </div>
         ${joinInfoForCard(table.name)}
         <div class="table-card-columns">
@@ -1289,55 +1289,213 @@
       });
     });
 
-    // Draw join lines after cards are rendered and laid out.
-    requestAnimationFrame(drawJoinLines);
+    // Draw join lines after cards are rendered and laid out, and keep them in
+    // sync with any later layout change (window width, card size, scrolling).
+    observeCanvasLayout();
+    scheduleJoinRedraw();
+  }
+
+  // ------------------------------------------------------------------
+  // Join connectors on the table canvas.
+  //
+  // Cards wrap into rows depending on the available width, so connectors are
+  // recomputed whenever the layout changes (see observeCanvasLayout). They run
+  // through the gaps between cards (never underneath a card): from the key
+  // column of one table out to the gutter beside it, along the gutters and
+  // into the key column of the other table.
+  // ------------------------------------------------------------------
+  const SVG_NS = 'http://www.w3.org/2000/svg';
+  let joinRedrawPending = false;
+  let canvasObserver = null;
+
+  function scheduleJoinRedraw() {
+    if (joinRedrawPending) return;
+    joinRedrawPending = true;
+    requestAnimationFrame(() => {
+      joinRedrawPending = false;
+      drawJoinLines();
+    });
+  }
+
+  function observeCanvasLayout() {
+    const wrapper = $('#query-canvas-wrapper');
+    const canvas = $('#query-canvas');
+    if (!wrapper || !canvas) return;
+    if (!canvasObserver && window.ResizeObserver) {
+      canvasObserver = new ResizeObserver(scheduleJoinRedraw);
+      // Scrolling a card's column list moves the key-column anchors.
+      canvas.addEventListener('scroll', scheduleJoinRedraw, true);
+      window.addEventListener('resize', scheduleJoinRedraw);
+    }
+    if (!canvasObserver) return;
+    canvasObserver.disconnect();
+    canvasObserver.observe(wrapper);
+    canvasObserver.observe(canvas);
+    canvas.querySelectorAll('.table-card').forEach(card => canvasObserver.observe(card));
+  }
+
+  // First column pair of a join (key_pairs or column-to-column conditions).
+  function joinKeyColumns(join) {
+    const pair = (join.key_pairs || []).find(p => p.left_column && p.right_column);
+    if (pair) return { left: pair.left_column, right: pair.right_column };
+    const cond = (join.conditions || []).find(c => c.left_column && c.right_column && !c.use_value);
+    if (!cond) return { left: '', right: '' };
+    // A condition may be written in either direction.
+    if (cond.left_table && cond.left_table === join.right_table) return { left: cond.right_column, right: cond.left_column };
+    return { left: cond.left_column, right: cond.right_column };
+  }
+
+  function joinEndpoints(join) {
+    const primary = state.tablesOnCanvas.find(tbl => tbl.isPrimary);
+    return { left: join.left_table || (primary ? primary.name : ''), right: join.right_table || '' };
+  }
+
+  function cardColumnItem(card, column) {
+    if (!card || !column) return null;
+    const input = card.querySelector(`.column-item input[data-role="select"][data-col="${CSS.escape(column)}"]`);
+    return input ? input.closest('.column-item') : null;
+  }
+
+  // Rounded orthogonal path through the given points.
+  function roundedPath(points, radius = 7) {
+    let d = `M ${points[0].x} ${points[0].y}`;
+    for (let i = 1; i < points.length; i++) {
+      const prev = points[i - 1];
+      const cur = points[i];
+      const next = points[i + 1];
+      if (!next) { d += ` L ${cur.x} ${cur.y}`; break; }
+      const inLen = Math.hypot(cur.x - prev.x, cur.y - prev.y);
+      const outLen = Math.hypot(next.x - cur.x, next.y - cur.y);
+      const r = Math.min(radius, inLen / 2, outLen / 2);
+      if (r < 0.5) { d += ` L ${cur.x} ${cur.y}`; continue; }
+      const p1 = { x: cur.x - ((cur.x - prev.x) / inLen) * r, y: cur.y - ((cur.y - prev.y) / inLen) * r };
+      const p2 = { x: cur.x + ((next.x - cur.x) / outLen) * r, y: cur.y + ((next.y - cur.y) / outLen) * r };
+      d += ` L ${p1.x} ${p1.y} Q ${cur.x} ${cur.y} ${p2.x} ${p2.y}`;
+    }
+    return d;
   }
 
   function drawJoinLines() {
     const svg = $('#join-svg');
     const wrapper = $('#query-canvas-wrapper');
-    if (!svg || !wrapper) return;
+    const canvas = $('#query-canvas');
+    if (!svg || !wrapper || !canvas) return;
     svg.innerHTML = '';
+    wrapper.querySelectorAll('.column-item.join-key').forEach(el => el.classList.remove('join-key'));
     const wrapperRect = wrapper.getBoundingClientRect();
+    if (!wrapperRect.width) return; // page hidden; redrawn when it is shown again
+    const gap = parseFloat(getComputedStyle(canvas).columnGap) || 16;
+    const half = gap / 2;
+    const rel = (r) => ({
+      left: r.left - wrapperRect.left, right: r.right - wrapperRect.left,
+      top: r.top - wrapperRect.top, bottom: r.bottom - wrapperRect.top,
+      width: r.width, height: r.height,
+    });
+
+    // Anchor: the key column row, kept inside the visible part of the column
+    // list (a scrolled-away column points to the edge it is hidden behind).
+    function anchor(card, column) {
+      const cardRect = rel(card.getBoundingClientRect());
+      const header = card.querySelector('.table-card-header');
+      const headerRect = header ? rel(header.getBoundingClientRect()) : cardRect;
+      const item = cardColumnItem(card, column);
+      if (!item) return { card: cardRect, y: headerRect.top + headerRect.height / 2, item: null };
+      item.classList.add('join-key');
+      const list = item.closest('.table-card-columns');
+      const listRect = list ? rel(list.getBoundingClientRect()) : cardRect;
+      const itemRect = rel(item.getBoundingClientRect());
+      const main = item.querySelector('.column-main');
+      const mainRect = main ? rel(main.getBoundingClientRect()) : itemRect;
+      const y = mainRect.top + mainRect.height / 2;
+      return { card: cardRect, y: Math.min(Math.max(y, listRect.top + 8), listRect.bottom - 8), item };
+    }
+
+    const routes = [];
     state.joins.forEach((join, idx) => {
-      const leftCard = wrapper.querySelector(`.table-card[data-table="${esc(join.left_table || '')}"]`);
-      const rightCard = wrapper.querySelector(`.table-card[data-table="${esc(join.right_table || '')}"]`);
-      if (!leftCard || !rightCard) return;
-      const leftRect = getCardCenter(leftCard);
-      const rightRect = getCardCenter(rightCard);
-      const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-      group.dataset.joinIndex = String(idx);
+      const ends = joinEndpoints(join);
+      const leftCard = wrapper.querySelector(`.table-card[data-table="${CSS.escape(ends.left)}"]`);
+      const rightCard = wrapper.querySelector(`.table-card[data-table="${CSS.escape(ends.right)}"]`);
+      if (!leftCard || !rightCard || leftCard === rightCard) return;
+      const keys = joinKeyColumns(join);
+      const a = anchor(leftCard, keys.left);
+      const b = anchor(rightCard, keys.right);
+      const sameColumn = Math.abs(a.card.left - b.card.left) < 2;
+      const dir = sameColumn || b.card.left > a.card.left ? 1 : -1;
+      const sx = dir > 0 ? a.card.right : a.card.left;
+      const ex = sameColumn ? b.card.right : (dir > 0 ? b.card.left : b.card.right);
+      const gxA = sx + dir * half;
+      const gxB = sameColumn ? gxA : ex - dir * half;
+      const adjacent = Math.abs(gxA - gxB) < 2;
+      // Horizontal run in the gap above the row of the target card.
+      const hy = adjacent ? null : Math.max(3, b.card.top - half);
+      routes.push({ join, idx, a, b, sx, ex, gxA, gxB, hy, adjacent });
+    });
 
-      const visibleLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-      visibleLine.setAttribute('x1', leftRect.x);
-      visibleLine.setAttribute('y1', leftRect.y);
-      visibleLine.setAttribute('x2', rightRect.x);
-      visibleLine.setAttribute('y2', rightRect.y);
+    // Spread connectors sharing a gutter into separate lanes.
+    const lanes = new Map();
+    const laneKey = (kind, v) => `${kind}:${Math.round(v)}`;
+    routes.forEach(r => {
+      const keys = [laneKey('x', r.gxA)];
+      if (!r.adjacent) keys.push(laneKey('x', r.gxB), laneKey('y', r.hy));
+      r.laneKeys = keys;
+      keys.forEach(k => lanes.set(k, (lanes.get(k) || 0) + 1));
+    });
+    const used = new Map();
+    const offsetFor = (key) => {
+      const count = lanes.get(key) || 1;
+      const i = used.get(key) || 0;
+      used.set(key, i + 1);
+      const step = Math.min(4, (gap - 4) / Math.max(1, count - 1));
+      return (i - (count - 1) / 2) * step;
+    };
 
-      const hitLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-      hitLine.setAttribute('x1', leftRect.x);
-      hitLine.setAttribute('y1', leftRect.y);
-      hitLine.setAttribute('x2', rightRect.x);
-      hitLine.setAttribute('y2', rightRect.y);
-      hitLine.setAttribute('class', 'join-hitline');
-
-      group.appendChild(visibleLine);
-      group.appendChild(hitLine);
-      group.addEventListener('mouseenter', (e) => showJoinTooltip(e, join));
-      group.addEventListener('mouseleave', hideJoinTooltip);
+    routes.forEach(r => {
+      const ox = offsetFor(r.laneKeys[0]);
+      const gxA = r.gxA + ox;
+      let points;
+      if (r.adjacent) {
+        points = [{ x: r.sx, y: r.a.y }, { x: gxA, y: r.a.y }, { x: gxA, y: r.b.y }, { x: r.ex, y: r.b.y }];
+      } else {
+        const gxB = r.gxB + offsetFor(r.laneKeys[1]);
+        const hy = r.hy + offsetFor(r.laneKeys[2]);
+        points = [
+          { x: r.sx, y: r.a.y }, { x: gxA, y: r.a.y }, { x: gxA, y: hy },
+          { x: gxB, y: hy }, { x: gxB, y: r.b.y }, { x: r.ex, y: r.b.y },
+        ];
+      }
+      const d = roundedPath(points);
+      const group = document.createElementNS(SVG_NS, 'g');
+      group.setAttribute('class', 'join-connector');
+      group.dataset.joinIndex = String(r.idx);
+      const line = document.createElementNS(SVG_NS, 'path');
+      line.setAttribute('d', d);
+      line.setAttribute('class', 'join-line');
+      const hit = document.createElementNS(SVG_NS, 'path');
+      hit.setAttribute('d', d);
+      hit.setAttribute('class', 'join-hitline');
+      group.append(line, hit);
+      [[r.sx, r.a.y], [r.ex, r.b.y]].forEach(([cx, cy]) => {
+        const dot = document.createElementNS(SVG_NS, 'circle');
+        dot.setAttribute('cx', cx);
+        dot.setAttribute('cy', cy);
+        dot.setAttribute('r', 3.5);
+        dot.setAttribute('class', 'join-dot');
+        group.appendChild(dot);
+      });
+      const items = [r.a.item, r.b.item].filter(Boolean);
+      group.addEventListener('mouseenter', (e) => {
+        group.classList.add('active');
+        items.forEach(el => el.classList.add('join-key-hover'));
+        showJoinTooltip(e, r.join);
+      });
+      group.addEventListener('mouseleave', () => {
+        group.classList.remove('active');
+        items.forEach(el => el.classList.remove('join-key-hover'));
+        hideJoinTooltip();
+      });
       group.addEventListener('mousemove', (e) => moveJoinTooltip(e));
       svg.appendChild(group);
     });
-  }
-
-  function getCardCenter(card) {
-    const wrapper = $('#query-canvas-wrapper');
-    const wrapperRect = wrapper.getBoundingClientRect();
-    const rect = card.getBoundingClientRect();
-    return {
-      x: rect.left + rect.width / 2 - wrapperRect.left + wrapper.scrollLeft,
-      y: rect.top + rect.height / 2 - wrapperRect.top + wrapper.scrollTop,
-    };
   }
 
   function showJoinTooltip(e, join) {

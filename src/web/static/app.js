@@ -757,6 +757,7 @@
     bindControl('add-chart', 'click', addChart);
     bindControl('add-series', 'click', () => addSeriesRow());
     bindControl('add-kpi', 'click', addKpi);
+    bindTableNav();
     bindControl('kpi-compare', 'change', toggleKpiCompare);
     bindControl('kpi-aggregation', 'change', updateKpiAggregationHint);
     bindBackgroundThemeSelect();
@@ -1118,6 +1119,138 @@
     // Labels are built with t(); refresh them once translations load or change.
     if (window.I18n) window.I18n.onChange(() => updateTrigger());
     updateTrigger();
+  }
+
+  // ------------------------------------------------------------------
+  // Wide tables: a navigation strip above the table (column arrows and a
+  // scrollbar), arrow keys that move by whole columns and a frozen first
+  // column. Moving sideways never scrolls vertically, so the row being read
+  // stays where it is.
+  // ------------------------------------------------------------------
+  let tableNavFrame = 0;
+  let tableNavSyncing = false;
+
+  function scheduleTableNavUpdate() {
+    if (tableNavFrame) return;
+    tableNavFrame = requestAnimationFrame(() => {
+      tableNavFrame = 0;
+      updateTableNav();
+    });
+  }
+
+  // Column edges in the scroll coordinates of the table box. (offsetLeft is
+  // relative to another ancestor and not usable with sticky cells.)
+  function tableColumnEdges() {
+    const wrap = $('#table-wrap');
+    const row = document.querySelector('#data-table thead tr');
+    if (!wrap || !row) return [];
+    const origin = wrap.getBoundingClientRect().left + wrap.clientLeft - wrap.scrollLeft;
+    const cells = [...row.children];
+    return cells.map((th, i) => {
+      // The frozen first header cell sticks to the left edge; it always starts at 0.
+      const left = i === 0 ? 0 : th.getBoundingClientRect().left - origin;
+      return { left, right: left + th.getBoundingClientRect().width };
+    });
+  }
+
+  // Width covered by the frozen first column: where the second column starts
+  // (includes the table's left border, so column steps land exactly).
+  function frozenColumnWidth() {
+    const table = $('#data-table');
+    if (!table || !table.classList.contains('freeze-first')) return 0;
+    const edges = tableColumnEdges();
+    return edges[1] ? edges[1].left : 0;
+  }
+
+  function scrollTableColumns(step) {
+    const wrap = $('#table-wrap');
+    if (!wrap) return;
+    const max = wrap.scrollWidth - wrap.clientWidth;
+    const frozen = frozenColumnWidth();
+    const edges = tableColumnEdges().slice(frozen ? 1 : 0);
+    const viewStart = wrap.scrollLeft + frozen;
+    let target;
+    if (step === 'start') target = 0;
+    else if (step === 'end') target = max;
+    else if (step > 0) {
+      const next = edges.find(e => e.left > viewStart + 2);
+      target = next ? next.left - frozen : max;
+    } else {
+      const prev = [...edges].reverse().find(e => e.left < viewStart - 2);
+      target = prev ? prev.left - frozen : 0;
+    }
+    wrap.scrollTo({ left: Math.max(0, Math.min(max, target)), behavior: 'smooth' });
+  }
+
+  function updateTableNav() {
+    const wrap = $('#table-wrap');
+    const nav = $('#table-nav');
+    const table = $('#data-table');
+    if (!wrap || !nav || !table) return;
+    const overflow = wrap.scrollWidth > wrap.clientWidth + 1;
+    const first = table.querySelector('thead th');
+    // Freeze the first column only when it helps and leaves room for the rest.
+    table.classList.toggle('freeze-first', overflow && !!first && first.offsetWidth < wrap.clientWidth * 0.45);
+    nav.classList.toggle('hidden', !overflow);
+    if (!overflow) return;
+    const prev = $('#table-nav-prev');
+    const next = $('#table-nav-next');
+    const track = $('#table-nav-track');
+    const max = wrap.scrollWidth - wrap.clientWidth;
+    prev.disabled = wrap.scrollLeft <= 1;
+    next.disabled = wrap.scrollLeft >= max - 1;
+    prev.title = t('table_nav_prev');
+    next.title = t('table_nav_next');
+    prev.setAttribute('aria-label', t('table_nav_prev'));
+    next.setAttribute('aria-label', t('table_nav_next'));
+    track.setAttribute('aria-label', t('table_nav_scrollbar'));
+    // The top scrollbar mirrors the table's horizontal scroll proportionally.
+    track.firstElementChild.style.width = Math.round(track.clientWidth * wrap.scrollWidth / wrap.clientWidth) + 'px';
+    const trackMax = track.scrollWidth - track.clientWidth;
+    tableNavSyncing = true;
+    track.scrollLeft = max > 0 ? wrap.scrollLeft * trackMax / max : 0;
+    requestAnimationFrame(() => { tableNavSyncing = false; });
+    // Which columns are in view (the frozen one is always visible).
+    const frozen = frozenColumnWidth();
+    const edges = tableColumnEdges();
+    const viewStart = wrap.scrollLeft + frozen;
+    const viewEnd = wrap.scrollLeft + wrap.clientWidth;
+    const startIdx = frozen ? 1 : 0;
+    let from = edges.findIndex((e, i) => i >= startIdx && e.right > viewStart + 2);
+    let to = -1;
+    edges.forEach((e, i) => { if (i >= startIdx && e.left < viewEnd - 2) to = i; });
+    if (from < 0) from = startIdx;
+    if (to < from) to = from;
+    $('#table-nav-info').textContent = t('table_nav_info', { from: from + 1, to: to + 1, total: edges.length });
+  }
+
+  function bindTableNav() {
+    const wrap = $('#table-wrap');
+    const track = $('#table-nav-track');
+    if (!wrap || !track) return;
+    wrap.addEventListener('scroll', scheduleTableNavUpdate, { passive: true });
+    track.addEventListener('scroll', () => {
+      if (tableNavSyncing) return;
+      const max = wrap.scrollWidth - wrap.clientWidth;
+      const trackMax = track.scrollWidth - track.clientWidth;
+      if (trackMax > 0) wrap.scrollLeft = track.scrollLeft * max / trackMax;
+    }, { passive: true });
+    $('#table-nav-prev').addEventListener('click', () => scrollTableColumns(-1));
+    $('#table-nav-next').addEventListener('click', () => scrollTableColumns(1));
+    wrap.addEventListener('keydown', (e) => {
+      if (e.target.closest('input, select, textarea, button') || e.altKey || e.ctrlKey || e.metaKey) return;
+      const keys = { ArrowRight: 1, ArrowLeft: -1, Home: 'start', End: 'end' };
+      if (!(e.key in keys) || wrap.scrollWidth <= wrap.clientWidth + 1) return;
+      e.preventDefault();
+      scrollTableColumns(keys[e.key]);
+    });
+    if (window.ResizeObserver) {
+      const observer = new ResizeObserver(scheduleTableNavUpdate);
+      observer.observe(wrap);
+      observer.observe($('#data-table'));
+    }
+    window.addEventListener('resize', scheduleTableNavUpdate);
+    if (window.I18n) window.I18n.onChange(() => scheduleTableNavUpdate());
   }
 
   function applyTableTheme() {
@@ -1920,7 +2053,7 @@
       return `<div class="filter-group" data-col="${colId}">
         <label>${label}</label>
         <div class="text-filter-rows" data-col="${colId}"></div>
-        <button type="button" class="btn small add-text-filter" data-col="${colId}">${esc(t('text_filter_add_button'))}</button>
+        <button type="button" class="btn small btn-add add-text-filter" data-col="${colId}">${ICONS.plusTile}<span>${esc(t('text_filter_add_button'))}</span></button>
       </div>`;
     }).join('');
     container.querySelectorAll('input').forEach(inp => {
@@ -1944,7 +2077,7 @@
         <option value="not_contains" ${initial.operator === 'not_contains' ? 'selected' : ''}>${esc(t('text_filter_operator_not_contains'))}</option>
       </select>
       <input type="text" class="text-filter-value" data-col="${esc(col)}" value="${esc(initial.value || '')}" placeholder="${esc(t('text_filter_value_placeholder'))}">
-      <button type="button" class="btn danger small remove-filter-row" title="${esc(t('text_filter_remove_title'))}">×</button>
+      <button type="button" class="card-icon-btn danger small remove-filter-row" title="${esc(t('text_filter_remove_title'))}" aria-label="${esc(t('text_filter_remove_title'))}">${ICONS.remove}</button>
     `;
     row.querySelector('.remove-filter-row').addEventListener('click', () => {
       row.remove();
@@ -2063,6 +2196,10 @@
   }
 
   function renderTable() {
+    // Keep the horizontal position when the table is redrawn (sorting, filters).
+    const wrap = $('#table-wrap');
+    const keepLeft = wrap ? wrap.scrollLeft : 0;
+    const restoreLeft = () => { if (wrap && keepLeft) wrap.scrollLeft = keepLeft; };
     const thead = $('#data-table thead');
     const tbody = $('#data-table tbody');
     thead.innerHTML = '';
@@ -2087,6 +2224,8 @@
     if (dimCols.length && !measureCols.length) {
       renderGroupedDetailTable(thead, tbody, rawCols, dimCols[0], rows);
       renderRowCount(rows.length, drillCols.length);
+      restoreLeft();
+      scheduleTableNavUpdate();
       return;
     }
 
@@ -2147,6 +2286,8 @@
     }
 
     renderRowCount(rows.length, drillCols.length);
+    restoreLeft();
+    scheduleTableNavUpdate();
   }
 
   function renderGroupedDetailTable(thead, tbody, cols, mainDim, rows) {
@@ -2486,6 +2627,7 @@
     $('#data-table thead').innerHTML = '';
     $('#data-table tbody').innerHTML = '';
     $('#row-count').textContent = '';
+    scheduleTableNavUpdate();
   }
 
   function toggleKpiCompare() {
@@ -3091,7 +3233,7 @@
         <option value="line" ${renderAs === 'line' ? 'selected' : ''}>${esc(t(SERIES_RENDER_LABELS.line))}</option>
       </select>
       <input type="text" class="series-label" placeholder="${esc(t('series_label_placeholder'))}" value="${esc(label)}">
-      <button class="btn danger remove-series" type="button">×</button>
+      <button class="card-icon-btn danger remove-series" type="button" title="${esc(t('series_remove_title'))}" aria-label="${esc(t('series_remove_title'))}">${ICONS.remove}</button>
     `;
     div.querySelector('.remove-series').addEventListener('click', () => div.remove());
     container.appendChild(div);
@@ -3215,6 +3357,7 @@
     expand: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M10 20H4v-6M20 4l-6.5 6.5M4 20l6.5-6.5"/></svg>',
     collapse: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 10h-6V4M4 14h6v6M14 10l6.5-6.5M10 14l-6.5 6.5"/></svg>',
     remove: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17"/></svg>',
+    plusTile: '<span class="btn-add-plus" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></span>',
     info: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v5M12 7.6v.01"/></svg>',
     pencil: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L18.5 9.5a2.1 2.1 0 0 0-4-4L4 16v4zM13.5 6.5l4 4"/></svg>',
     database: '<svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6"/></svg>',

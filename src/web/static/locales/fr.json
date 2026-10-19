@@ -64,7 +64,7 @@
   "chart_x_axis_placeholder": "par ex. Mois",
   "chart_y_axis_label": "Libellé de l'axe Y",
   "chart_y_axis_placeholder": "par ex. Chiffre d'affaires (CZK)",
-  "add_series_button": "+ Ajouter une série",
+  "add_series_button": "Ajouter une série",
   "add_chart_button": "Ajouter le graphique",
   "more_settings_heading": "Plus de paramètres",
   "kpi_heading": "Cartes KPI",
@@ -299,7 +299,7 @@
   "number_max_placeholder": "max",
   "date_from_placeholder": "du",
   "date_to_placeholder": "au",
-  "text_filter_add_button": "+ condition",
+  "text_filter_add_button": "Ajouter une condition",
   "text_filter_remove_title": "Supprimer",
   "text_filter_value_placeholder": "valeur (utilisez % ou _)",
   "text_filter_operator_equals": "=",
@@ -544,5 +544,11 @@
   "lineage_view_not_modeled": "La vue n'a pas été créée dans la modélisation, sa définition n'est donc pas disponible ici.",
   "kpi_aggregation_first": "Dernière valeur (1re ligne du tableau)",
   "kpi_first_hint": "Prend la valeur de la première ligne du tableau tel qu'il est trié (aussi sur plusieurs colonnes) et regroupé. En comparaison avec la même colonne, la deuxième ligne est utilisée, par ex. ce mois-ci par rapport au mois dernier.",
-  "kpi_first_value_title": "Valeur de la première ligne du tableau"
+  "kpi_first_value_title": "Valeur de la première ligne du tableau",
+  "series_remove_title": "Supprimer la série",
+  "remove_table_title": "Retirer la table de la vue",
+  "table_nav_prev": "Colonne précédente (←)",
+  "table_nav_next": "Colonne suivante (→)",
+  "table_nav_scrollbar": "Faire défiler le tableau horizontalement",
+  "table_nav_info": "Colonnes {from}–{to} sur {total}"
 }
