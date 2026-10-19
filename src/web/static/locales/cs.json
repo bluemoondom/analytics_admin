@@ -477,5 +477,18 @@
   "connector_share_code_hint": "Pošlete tento kód autorovi view. Podle něj vám může view nasdílet na tento konektor.",
   "chart_loading": "Načítám data grafu…",
   "chart_load_error": "Data grafu se nepodařilo načíst: {error}",
-  "chart_truncated_note": "Zobrazeno prvních {count} hodnot osy"
+  "chart_truncated_note": "Zobrazeno prvních {count} hodnot osy",
+  "chart_collapse_title": "Zmenšit",
+  "chart_remove_title": "Smazat graf",
+  "kpi_remove_title": "Smazat KPI kartu",
+  "confirm_delete_chart_title": "Smazat graf?",
+  "confirm_delete_chart_message": "Graf „{name}“ bude z dashboardu odstraněn.",
+  "confirm_delete_kpi_title": "Smazat KPI kartu?",
+  "confirm_delete_kpi_message": "Karta „{name}“ bude z dashboardu odstraněna.",
+  "confirm_untitled": "bez názvu",
+  "confirm_delete_button": "Smazat",
+  "confirm_cancel_button": "Zrušit",
+  "dashboard_saving": "Ukládám dashboard…",
+  "dashboard_saved": "Dashboard uložen",
+  "dashboard_save_failed": "Uložení se nezdařilo"
 }

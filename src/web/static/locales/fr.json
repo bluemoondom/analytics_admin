@@ -477,5 +477,18 @@
   "connector_share_code_hint": "Envoyez ce code à l'auteur d'une view pour qu'il puisse la partager vers ce connecteur.",
   "chart_loading": "Chargement des données du graphique…",
   "chart_load_error": "Impossible de charger les données du graphique : {error}",
-  "chart_truncated_note": "Affichage des {count} premières valeurs de l'axe"
+  "chart_truncated_note": "Affichage des {count} premières valeurs de l'axe",
+  "chart_collapse_title": "Réduire",
+  "chart_remove_title": "Supprimer le graphique",
+  "kpi_remove_title": "Supprimer la carte KPI",
+  "confirm_delete_chart_title": "Supprimer le graphique ?",
+  "confirm_delete_chart_message": "Le graphique « {name} » sera retiré du tableau de bord.",
+  "confirm_delete_kpi_title": "Supprimer la carte KPI ?",
+  "confirm_delete_kpi_message": "La carte « {name} » sera retirée du tableau de bord.",
+  "confirm_untitled": "sans titre",
+  "confirm_delete_button": "Supprimer",
+  "confirm_cancel_button": "Annuler",
+  "dashboard_saving": "Enregistrement du tableau de bord…",
+  "dashboard_saved": "Tableau de bord enregistré",
+  "dashboard_save_failed": "Échec de l'enregistrement"
 }

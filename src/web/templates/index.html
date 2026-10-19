@@ -759,6 +759,35 @@
   </section>
 </main>
 
+  <!-- Confirmation before deleting a chart or KPI card -->
+<div id="confirm-modal" class="modal confirm-modal hidden" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-message">
+  <div class="modal-backdrop"></div>
+  <div class="modal-content confirm-content">
+    <div class="confirm-icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4.5h6V7M18 7l-.8 12.2a1.5 1.5 0 0 1-1.5 1.3H8.3a1.5 1.5 0 0 1-1.5-1.3L6 7M10 11v6M14 11v6"/></svg>
+    </div>
+    <h4 id="confirm-title"></h4>
+    <p id="confirm-message"></p>
+    <div class="modal-actions">
+      <button id="confirm-cancel" type="button" class="btn" data-i18n="confirm_cancel_button">Zrušit</button>
+      <button id="confirm-ok" type="button" class="btn danger" data-i18n="confirm_delete_button">Smazat</button>
+    </div>
+  </div>
+</div>
+
+  <!-- Short notice shown while the dashboard is being saved -->
+<div id="save-toast" class="save-toast" role="status" aria-live="polite">
+  <span class="save-toast-icon" aria-hidden="true">
+    <span class="save-toast-spinner"></span>
+    <svg class="save-toast-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
+    <svg class="save-toast-error" viewBox="0 0 24 24"><path d="M12 7v6M12 17h.01"/></svg>
+  </span>
+  <span class="save-toast-body">
+    <span class="save-toast-text"></span>
+    <span class="save-toast-detail"></span>
+  </span>
+</div>
+
   <!-- Modal for column alias editing -->
 <div id="alias-modal" class="modal hidden">
   <div class="modal-backdrop"></div>

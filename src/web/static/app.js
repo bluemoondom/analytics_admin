@@ -454,7 +454,6 @@
     data: { columns: [], rows: [], column_types: {} },
     chartInstances: {},
     aliasColumn: null,
-    expandedChart: null,
     // Server-side chart data: request key -> { rows, truncated, error, generation }.
     chartCache: new Map(),
     chartGeneration: 0,
@@ -749,7 +748,7 @@
 
   function bindEvents() {
     bindControl('new-dashboard', 'click', newDashboard);
-    bindControl('save-dashboard', 'click', async () => { await saveDashboard(); await refreshData(); });
+    bindControl('save-dashboard', 'click', async () => { await saveDashboard({ notify: true }); await refreshData(); });
     bindControl('delete-dashboard', 'click', deleteDashboard);
     bindControl('view-select', 'change', () => onViewChange(true));
     bindControl('add-chart', 'click', addChart);
@@ -1247,6 +1246,7 @@
       row_limit: 1000,
       dimension_columns: [],
       drill_down_sort_desc: false,
+      expanded_chart: null,
     };
     state.columns = [];
     state.chartInstances = {};
@@ -2514,6 +2514,13 @@
   }
 
   async function removeKpi(idx) {
+    const kpi = (state.currentDashboard.kpi_cards || [])[idx];
+    if (!kpi) return;
+    const confirmed = await confirmDialog({
+      title: t('confirm_delete_kpi_title'),
+      message: t('confirm_delete_kpi_message', { name: kpi.title || kpi.column || t('confirm_untitled') }),
+    });
+    if (!confirmed) return;
     state.currentDashboard.kpi_cards.splice(idx, 1);
     await saveDashboard();
     await refreshData();
@@ -2615,7 +2622,7 @@
       card.innerHTML = `
         <div class="kpi-header">
           <span class="kpi-title">${esc(kpi.title)}</span>
-          <button data-idx="${idx}" class="btn danger remove-kpi" type="button">×</button>
+          <button data-idx="${idx}" class="card-icon-btn danger small remove-kpi" type="button" title="${esc(t('kpi_remove_title'))}" aria-label="${esc(t('kpi_remove_title'))}">${ICONS.remove}</button>
         </div>
         <div class="kpi-body">
           <span class="kpi-value">${formatKpiDisplay(kpi, value)}</span>
@@ -2650,7 +2657,47 @@
   // ------------------------------------------------------------------
   // Dashboard persistence
   // ------------------------------------------------------------------
-  async function saveDashboard() {
+  // Small notice in the middle of the page, in the dashboard's background colours.
+  const SAVE_TOAST_MIN_MS = 2000;
+  let saveToastTimer = null;
+
+  function showSaveToast(status, detail = '') {
+    const toast = $('#save-toast');
+    if (!toast) return;
+    const dash = state.currentDashboard;
+    const theme = BACKGROUND_THEMES[(dash && dash.background_theme) || 'default'] || BACKGROUND_THEMES.default;
+    toast.style.setProperty('--toast-bg', theme.bg);
+    toast.style.setProperty('--toast-fg', theme.text);
+    toast.classList.remove('saving', 'saved', 'failed');
+    toast.classList.add(status, 'show');
+    const text = { saving: 'dashboard_saving', saved: 'dashboard_saved', failed: 'dashboard_save_failed' }[status];
+    toast.querySelector('.save-toast-text').textContent = t(text);
+    toast.querySelector('.save-toast-detail').textContent = detail;
+    clearTimeout(saveToastTimer);
+  }
+
+  // Readable reason from an api() error (FastAPI answers with {"detail": ...}).
+  function errorDetail(err) {
+    const text = (err && err.message) || String(err || '');
+    try {
+      const detail = JSON.parse(text).detail;
+      if (typeof detail === 'string') return detail;
+      if (Array.isArray(detail) && detail.length) return detail.map(d => (d && d.msg) || '').filter(Boolean).join('; ');
+    } catch (e) { /* not JSON */ }
+    return text.length > 200 ? text.slice(0, 200) + '…' : text;
+  }
+
+  function hideSaveToast(delay) {
+    const toast = $('#save-toast');
+    if (!toast) return;
+    clearTimeout(saveToastTimer);
+    saveToastTimer = setTimeout(() => toast.classList.remove('show'), Math.max(0, delay));
+  }
+
+  async function saveDashboard(options = {}) {
+    const notify = !!options.notify;
+    const startedAt = Date.now();
+    if (notify) showSaveToast('saving');
     const dash = state.currentDashboard;
     dash.name = $('#dashboard-name').value.trim() || t('dashboard_unnamed_fallback');
     dash.filters = collectFilters();
@@ -2683,9 +2730,21 @@
       await loadKpiValues();
       renderKpiCards();
       renderCharts();
+      if (notify) {
+        showSaveToast('saved');
+        // Visible for two seconds in total, and at least a moment after the check mark appears.
+        hideSaveToast(Math.max(SAVE_TOAST_MIN_MS - (Date.now() - startedAt), 700));
+      }
+      return true;
     } catch (err) {
-      alert(t('dashboard_save_error', { error: err.message }));
       console.error(err);
+      if (notify) {
+        showSaveToast('failed', errorDetail(err));
+        hideSaveToast(4000);
+      } else {
+        alert(t('dashboard_save_error', { error: err.message }));
+      }
+      return false;
     }
   }
 
@@ -3010,14 +3069,90 @@
     saveDashboard();
   }
 
-  function expandChart(idx) {
-    state.expandedChart = idx;
-    renderCharts();
+  // The enlarged chart belongs to the dashboard: switching dashboards shows each
+  // one with its own layout, and the choice is stored with the dashboard.
+  function expandedChartIndex() {
+    const dash = state.currentDashboard;
+    if (!dash) return null;
+    const idx = dash.expanded_chart;
+    return Number.isInteger(idx) && idx >= 0 && idx < (dash.charts || []).length ? idx : null;
   }
 
-  function closeExpandedChart() {
-    state.expandedChart = null;
+  function setExpandedChart(idx) {
+    const dash = state.currentDashboard;
+    if (!dash) return;
+    dash.expanded_chart = idx;
     renderCharts();
+    // Saved on its own so that other unsaved edits are not stored along with it;
+    // an unsaved dashboard keeps the choice until its first save.
+    if (dash.id) {
+      api('PUT', '/' + dash.id + '/expanded-chart', { expanded_chart: idx })
+        .catch(err => console.error('Could not store the enlarged chart', err));
+    }
+  }
+
+  const ICONS = {
+    expand: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M10 20H4v-6M20 4l-6.5 6.5M4 20l6.5-6.5"/></svg>',
+    collapse: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 10h-6V4M4 14h6v6M14 10l6.5-6.5M10 14l-6.5 6.5"/></svg>',
+    remove: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17"/></svg>',
+  };
+
+  // Styled replacement for window.confirm(); resolves to true when confirmed.
+  function confirmDialog({ title, message, confirmLabel }) {
+    const modal = $('#confirm-modal');
+    if (!modal) return Promise.resolve(window.confirm(message || title));
+    $('#confirm-title').textContent = title || '';
+    $('#confirm-message').textContent = message || '';
+    const ok = $('#confirm-ok');
+    const cancel = $('#confirm-cancel');
+    ok.textContent = confirmLabel || t('confirm_delete_button');
+    cancel.textContent = t('confirm_cancel_button');
+    const previousFocus = document.activeElement;
+    modal.classList.remove('hidden');
+    cancel.focus();
+    return new Promise(resolve => {
+      const backdrop = modal.querySelector('.modal-backdrop');
+      function close(result) {
+        modal.classList.add('hidden');
+        ok.removeEventListener('click', onOk);
+        cancel.removeEventListener('click', onCancel);
+        backdrop.removeEventListener('click', onCancel);
+        document.removeEventListener('keydown', onKey, true);
+        if (previousFocus && previousFocus.focus && document.contains(previousFocus)) previousFocus.focus();
+        resolve(result);
+      }
+      function onOk() { close(true); }
+      function onCancel() { close(false); }
+      function onKey(e) {
+        if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(false); }
+        else if (e.key === 'Tab') {
+          // Keep focus inside the dialog.
+          e.preventDefault();
+          (document.activeElement === ok ? cancel : ok).focus();
+        }
+      }
+      ok.addEventListener('click', onOk);
+      cancel.addEventListener('click', onCancel);
+      backdrop.addEventListener('click', onCancel);
+      document.addEventListener('keydown', onKey, true);
+    });
+  }
+
+  async function removeChart(idx) {
+    const dash = state.currentDashboard;
+    const chart = (dash.charts || [])[idx];
+    if (!chart) return;
+    const confirmed = await confirmDialog({
+      title: t('confirm_delete_chart_title'),
+      message: t('confirm_delete_chart_message', { name: chart.title || t('confirm_untitled') }),
+    });
+    if (!confirmed) return;
+    const expanded = expandedChartIndex();
+    dash.charts.splice(idx, 1);
+    // Keep the enlarged chart pointing at the same chart after the removal.
+    if (expanded === idx) dash.expanded_chart = null;
+    else if (expanded !== null && expanded > idx) dash.expanded_chart = expanded - 1;
+    saveDashboard();
   }
 
   function ensureVisible(colName) {
@@ -3051,7 +3186,7 @@
     updateChartsPerRowStyle();
     if (!state.currentDashboard || !state.currentDashboard.view_name) return;
     requestMissingChartData();
-    const expanded = state.expandedChart;
+    const expanded = expandedChartIndex();
     if (expanded !== null) {
       list.classList.add('has-expanded');
     } else {
@@ -3062,9 +3197,11 @@
       const card = document.createElement('div');
       card.className = 'chart-card' + (expanded === idx ? ' expanded' : '');
       const title = document.createElement('h4');
-      title.innerHTML = `${esc(chart.title)}
-        ${expanded === idx ? '<button id="close-expanded-chart" class="btn icon" type="button">✕</button>' : `<button data-idx="${idx}" class="btn icon expand-chart" type="button" title="${esc(t('chart_expand_title'))}">⤢</button>`}
-        <button data-idx="${idx}" class="btn danger remove-chart" type="button">×</button>`;
+      const sizeButton = expanded === idx
+        ? `<button id="close-expanded-chart" class="card-icon-btn" type="button" title="${esc(t('chart_collapse_title'))}" aria-label="${esc(t('chart_collapse_title'))}">${ICONS.collapse}</button>`
+        : `<button data-idx="${idx}" class="card-icon-btn expand-chart" type="button" title="${esc(t('chart_expand_title'))}" aria-label="${esc(t('chart_expand_title'))}">${ICONS.expand}</button>`;
+      title.innerHTML = `<span class="chart-title">${esc(chart.title)}</span>
+        <span class="card-actions">${sizeButton}<button data-idx="${idx}" class="card-icon-btn danger remove-chart" type="button" title="${esc(t('chart_remove_title'))}" aria-label="${esc(t('chart_remove_title'))}">${ICONS.remove}</button></span>`;
       card.appendChild(title);
       const chartArea = document.createElement('div');
       chartArea.className = 'chart-area';
@@ -3109,16 +3246,13 @@
     });
 
     list.querySelectorAll('.remove-chart').forEach(btn => {
-      btn.addEventListener('click', () => {
-        state.currentDashboard.charts.splice(parseInt(btn.dataset.idx), 1);
-        saveDashboard();
-      });
+      btn.addEventListener('click', () => removeChart(parseInt(btn.dataset.idx, 10)));
     });
     list.querySelectorAll('.expand-chart').forEach(btn => {
-      btn.addEventListener('click', () => expandChart(parseInt(btn.dataset.idx)));
+      btn.addEventListener('click', () => setExpandedChart(parseInt(btn.dataset.idx, 10)));
     });
     const closeBtn = $('#close-expanded-chart');
-    if (closeBtn) closeBtn.addEventListener('click', closeExpandedChart);
+    if (closeBtn) closeBtn.addEventListener('click', () => setExpandedChart(null));
   }
 
   // ------------------------------------------------------------------

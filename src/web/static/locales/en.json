@@ -477,5 +477,18 @@
   "connector_share_code_hint": "Send this code to the author of a view so they can share it to this connector.",
   "chart_loading": "Loading chart data…",
   "chart_load_error": "Chart data could not be loaded: {error}",
-  "chart_truncated_note": "Showing the first {count} axis values"
+  "chart_truncated_note": "Showing the first {count} axis values",
+  "chart_collapse_title": "Collapse",
+  "chart_remove_title": "Delete chart",
+  "kpi_remove_title": "Delete KPI card",
+  "confirm_delete_chart_title": "Delete chart?",
+  "confirm_delete_chart_message": "The chart “{name}” will be removed from the dashboard.",
+  "confirm_delete_kpi_title": "Delete KPI card?",
+  "confirm_delete_kpi_message": "The card “{name}” will be removed from the dashboard.",
+  "confirm_untitled": "untitled",
+  "confirm_delete_button": "Delete",
+  "confirm_cancel_button": "Cancel",
+  "dashboard_saving": "Saving dashboard…",
+  "dashboard_saved": "Dashboard saved",
+  "dashboard_save_failed": "Saving failed"
 }

@@ -119,6 +119,8 @@ class Dashboard(BaseModel):
     replace_null_with_empty: bool = True
     color_numeric_sign: bool = False
     row_limit: int = 1000
+    # Index of the chart shown enlarged (None = all charts in the grid).
+    expanded_chart: int | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -154,6 +156,12 @@ class DataQueryRequest(BaseModel):
     color_numeric_sign: bool = False
     row_limit: int = 0
 
+
+
+class ExpandedChartUpdate(BaseModel):
+    """Which chart of a dashboard is shown enlarged (None = none)."""
+
+    expanded_chart: int | None = None
 
 
 class ChartDataRequest(BaseModel):

@@ -194,8 +194,9 @@ class DashboardStorage:
                         "replace_null_with_empty",
                         "color_numeric_sign",
                         "row_limit",
+                        "expanded_chart",
                     ]:
-                        sql_type = "INTEGER" if col_name in {"drill_down_sort_desc", "replace_null_with_empty", "color_numeric_sign", "row_limit"} else "TEXT"
+                        sql_type = "INTEGER" if col_name in {"drill_down_sort_desc", "replace_null_with_empty", "color_numeric_sign", "row_limit", "expanded_chart"} else "TEXT"
                         try:
                             conn.execute(
                                 f"ALTER TABLE dashboards ADD COLUMN {col_name} {sql_type}"
@@ -291,6 +292,7 @@ class DashboardStorage:
                 "replace_null_with_empty": int(dashboard.replace_null_with_empty),
                 "color_numeric_sign": int(dashboard.color_numeric_sign),
                 "row_limit": dashboard.row_limit,
+                "expanded_chart": dashboard.expanded_chart,
             }
             if dashboard.id:
                 data["updated_at"] = now
@@ -506,6 +508,7 @@ class DashboardStorage:
                     "replace_null_with_empty",
                     "color_numeric_sign",
                     "row_limit",
+                    "expanded_chart",
                 ]:
                     sql_type = "NVARCHAR(MAX)" if col_name in ["dimension_columns", "drill_down_columns", "sort"] else (
                         "BIT" if col_name in ["show_grid", "drill_down_sort_desc", "replace_null_with_empty", "color_numeric_sign"] else (
@@ -556,6 +559,26 @@ class DashboardStorage:
             return self._save_dashboard_mssql(dashboard)
         return self._save_dashboard_sqlite(dashboard)
 
+    def set_expanded_chart(self, dashboard_id: int, expanded_chart: int | None) -> None:
+        """Store only the enlarged chart of a dashboard, leaving the rest untouched."""
+        if self.backend == "mssql":
+            with self._mssql_connection() as conn, conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE dbo.dashboards SET expanded_chart = %s WHERE id = %s",
+                    (expanded_chart, dashboard_id),
+                )
+                conn.commit()
+            return
+        conn = self._sqlite_conn()
+        try:
+            conn.execute(
+                "UPDATE dashboards SET expanded_chart = ? WHERE id = ?",
+                (expanded_chart, dashboard_id),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
     def delete_dashboard(self, dashboard_id: int) -> None:
         if self.backend == "mssql":
             self._delete_dashboard_mssql(dashboard_id)
@@ -590,6 +613,7 @@ class DashboardStorage:
         show_grid = _get_row_value(row, "show_grid")
         color_numeric_sign = _get_row_value(row, "color_numeric_sign")
         row_limit = _get_row_value(row, "row_limit")
+        expanded_chart = _get_row_value(row, "expanded_chart")
         dimension_columns = _safe_json_loads(
             _get_row_value(row, "dimension_columns"), []
         )
@@ -686,6 +710,7 @@ class DashboardStorage:
             ),
             color_numeric_sign=bool(int(color_numeric_sign)) if color_numeric_sign is not None else False,
             row_limit=int(row_limit) if row_limit is not None else 1000,
+            expanded_chart=int(expanded_chart) if expanded_chart is not None else None,
             dimension_columns=dimension_columns,
 
             drill_down_columns=drill_down_columns,
@@ -748,7 +773,7 @@ class DashboardStorage:
                         table_theme = %s, background_theme = %s,
                         charts_per_row = %s, chart_card_height = %s, show_grid = %s,
                         replace_null_with_empty = %s, color_numeric_sign = %s,
-                        row_limit = %s, updated_at = GETUTCDATE()
+                        row_limit = %s, expanded_chart = %s, updated_at = GETUTCDATE()
                     WHERE id = %s
                     """,
                     (
@@ -779,6 +804,7 @@ class DashboardStorage:
                         int(dashboard.replace_null_with_empty),
                         int(dashboard.color_numeric_sign),
                         dashboard.row_limit,
+                        dashboard.expanded_chart,
                         dashboard.id,
                     ),
                 )
@@ -792,7 +818,7 @@ class DashboardStorage:
                      dimension_columns, drill_down_columns, drill_down_sort_desc,
                      number_format, date_time_format, color_scheme, table_theme, background_theme,
                      charts_per_row, chart_card_height, show_grid,
-                     replace_null_with_empty, color_numeric_sign, row_limit)
+                     replace_null_with_empty, color_numeric_sign, row_limit, expanded_chart)
                     OUTPUT INSERTED.id
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """,
@@ -824,6 +850,7 @@ class DashboardStorage:
                         int(dashboard.replace_null_with_empty),
                         int(dashboard.color_numeric_sign),
                         dashboard.row_limit,
+                        dashboard.expanded_chart,
                     ),
                 )
                 db_id = cur.fetchone()["id"]

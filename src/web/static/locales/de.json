@@ -477,5 +477,18 @@
   "connector_share_code_hint": "Senden Sie diesen Code dem Autor einer View, damit er sie mit diesem Konnektor teilen kann.",
   "chart_loading": "Diagrammdaten werden geladen…",
   "chart_load_error": "Diagrammdaten konnten nicht geladen werden: {error}",
-  "chart_truncated_note": "Die ersten {count} Achsenwerte werden angezeigt"
+  "chart_truncated_note": "Die ersten {count} Achsenwerte werden angezeigt",
+  "chart_collapse_title": "Verkleinern",
+  "chart_remove_title": "Diagramm löschen",
+  "kpi_remove_title": "KPI-Karte löschen",
+  "confirm_delete_chart_title": "Diagramm löschen?",
+  "confirm_delete_chart_message": "Das Diagramm „{name}“ wird aus dem Dashboard entfernt.",
+  "confirm_delete_kpi_title": "KPI-Karte löschen?",
+  "confirm_delete_kpi_message": "Die Karte „{name}“ wird aus dem Dashboard entfernt.",
+  "confirm_untitled": "ohne Titel",
+  "confirm_delete_button": "Löschen",
+  "confirm_cancel_button": "Abbrechen",
+  "dashboard_saving": "Dashboard wird gespeichert…",
+  "dashboard_saved": "Dashboard gespeichert",
+  "dashboard_save_failed": "Speichern fehlgeschlagen"
 }

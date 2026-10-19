@@ -12,6 +12,7 @@ from src.web.models.dashboard import (
     Dashboard,
     DashboardSummary,
     DataQueryRequest,
+    ExpandedChartUpdate,
 )
 from src.web.models.user import User, UserRole
 from src.web.services.export import export_pivot_to_excel, export_table_to_excel
@@ -151,6 +152,24 @@ def update_dashboard(
         dashboard.user_id = existing.user_id
         dashboard.connector_id = existing.connector_id
     return storage.save_dashboard(dashboard)
+
+
+@router.put("/{dashboard_id}/expanded-chart")
+def set_expanded_chart(
+    dashboard_id: int,
+    payload: ExpandedChartUpdate,
+    storage: StorageDep,
+    user: Annotated[User, Depends(require_user)],
+):
+    """Remember which chart is shown enlarged, without saving other changes."""
+    existing = storage.get_dashboard_for_user(dashboard_id, user)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Dashboard not found")
+    value = payload.expanded_chart
+    if value is not None and not 0 <= value < len(existing.charts):
+        raise HTTPException(status_code=400, detail="Chart index out of range")
+    storage.set_expanded_chart(dashboard_id, value)
+    return {"expanded_chart": value}
 
 
 @router.delete("/{dashboard_id}")
