@@ -286,9 +286,11 @@
                         <option value="avg" data-i18n="series_aggregation_avg">Průměr</option>
                         <option value="min" data-i18n="series_aggregation_min">Min</option>
                         <option value="max" data-i18n="series_aggregation_max">Max</option>
+                        <option value="first" data-i18n="kpi_aggregation_first">Poslední hodnota (1. řádek tabulky)</option>
                       </select>
                     </label>
                   </div>
+                  <p id="kpi-first-hint" class="hint kpi-first-hint hidden" data-i18n="kpi_first_hint">Vezme hodnotu z prvního řádku tabulky tak, jak je právě seřazená (i podle více sloupců) a seskupená. Při porovnání se stejným sloupcem se použije druhý řádek, např. tento měsíc proti minulému.</p>
                   <div class="form-row">
                     <label><span data-i18n="kpi_prefix_label">Předpona</span>
                       <input id="kpi-prefix" type="text" data-i18n-placeholder="kpi_prefix_placeholder" placeholder="např. Kč" />

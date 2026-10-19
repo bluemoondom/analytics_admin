@@ -5,7 +5,9 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+from src.web.services.html_sanitizer import sanitize_description
 
 
 class DashboardFilter(BaseModel):
@@ -45,7 +47,8 @@ class DashboardKpiCard(BaseModel):
     id: int | None = None
     title: str = ""
     column: str
-    aggregation: str = "sum"  # sum | count | avg | min | max
+    # sum | count | avg | min | max | first (value from the top table row).
+    aggregation: str = "sum"
     prefix: str = ""
     suffix: str = ""
     decimals: int = 0
@@ -67,6 +70,17 @@ class DashboardChart(BaseModel):
     title: str = ""
     x_label: str = ""  # Custom label for X axis.
     y_label: str = ""  # Custom label for Y axis.
+    # Rich-text description (sanitized HTML subset, see html_sanitizer).
+    description: str = ""
+    # Show the first paragraph of the description under the chart title.
+    show_caption: bool = False
+    description_updated_by: str = ""
+    description_updated_at: str = ""
+
+    @field_validator("description", mode="before")
+    @classmethod
+    def _clean_description(cls, value: object) -> str:
+        return sanitize_description(value if isinstance(value, str) else "")
 
     # Legacy single-series fields kept for compatibility.
     y_column: str = ""
@@ -156,6 +170,18 @@ class DataQueryRequest(BaseModel):
     color_numeric_sign: bool = False
     row_limit: int = 0
 
+
+
+class ChartDescriptionUpdate(BaseModel):
+    """Description of one chart, saved on its own."""
+
+    description: str = ""
+    show_caption: bool = False
+
+    @field_validator("description", mode="before")
+    @classmethod
+    def _clean_description(cls, value: object) -> str:
+        return sanitize_description(value if isinstance(value, str) else "")
 
 
 class ExpandedChartUpdate(BaseModel):

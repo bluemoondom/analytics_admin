@@ -169,6 +169,10 @@ class DashboardStorage:
                 ("split_by_column", "TEXT"),
                 ("x_label", "TEXT"),
                 ("y_label", "TEXT"),
+                ("description", "TEXT"),
+                ("show_caption", "INTEGER"),
+                ("description_updated_by", "TEXT"),
+                ("description_updated_at", "TEXT"),
             ]:
                 try:
                     conn.execute(
@@ -321,8 +325,9 @@ class DashboardStorage:
                 conn.execute(
                     """
                     INSERT INTO dashboard_charts
-                    (dashboard_id, chart_type, x_column, y_column, aggregation, title, series, split_by_column, x_label, y_label)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    (dashboard_id, chart_type, x_column, y_column, aggregation, title, series, split_by_column, x_label, y_label,
+                     description, show_caption, description_updated_by, description_updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         db_id,
@@ -335,6 +340,10 @@ class DashboardStorage:
                         chart.split_by_column,
                         chart.x_label,
                         chart.y_label,
+                        chart.description,
+                        int(chart.show_caption),
+                        chart.description_updated_by,
+                        chart.description_updated_at,
                     ),
                 )
             # Replace KPI cards.
@@ -482,13 +491,22 @@ class DashboardStorage:
                     """
                 )
                 # Migration: add series/split_by_column/x_label/y_label columns if missing.
-                for col_name in ["series", "split_by_column", "x_label", "y_label"]:
+                for col_name in [
+                    "series", "split_by_column", "x_label", "y_label",
+                    "description", "description_updated_by", "description_updated_at",
+                ]:
                     cur.execute(
                         f"""
                         IF COL_LENGTH('dbo.dashboard_charts', '{col_name}') IS NULL
                         ALTER TABLE dbo.dashboard_charts ADD {col_name} NVARCHAR(MAX)
                         """
                     )
+                cur.execute(
+                    """
+                    IF COL_LENGTH('dbo.dashboard_charts', 'show_caption') IS NULL
+                    ALTER TABLE dbo.dashboard_charts ADD show_caption BIT
+                    """
+                )
                 # Migration: add aggregations/column_aliases/display columns if missing.
                 for col_name in [
                     "aggregations",
@@ -558,6 +576,41 @@ class DashboardStorage:
         if self.backend == "mssql":
             return self._save_dashboard_mssql(dashboard)
         return self._save_dashboard_sqlite(dashboard)
+
+    def set_chart_description(
+        self,
+        dashboard_id: int,
+        chart_id: int,
+        description: str,
+        show_caption: bool,
+        updated_by: str,
+        updated_at: str,
+    ) -> bool:
+        """Store the description of one chart. Returns False if the chart is not found."""
+        params = (description, int(show_caption), updated_by, updated_at, chart_id, dashboard_id)
+        if self.backend == "mssql":
+            with self._mssql_connection() as conn, conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE dbo.dashboard_charts SET description = %s, show_caption = %s, "
+                    "description_updated_by = %s, description_updated_at = %s "
+                    "WHERE id = %s AND dashboard_id = %s",
+                    params,
+                )
+                changed = cur.rowcount
+                conn.commit()
+            return bool(changed)
+        conn = self._sqlite_conn()
+        try:
+            cur = conn.execute(
+                "UPDATE dashboard_charts SET description = ?, show_caption = ?, "
+                "description_updated_by = ?, description_updated_at = ? "
+                "WHERE id = ? AND dashboard_id = ?",
+                params,
+            )
+            conn.commit()
+            return bool(cur.rowcount)
+        finally:
+            conn.close()
 
     def set_expanded_chart(self, dashboard_id: int, expanded_chart: int | None) -> None:
         """Store only the enlarged chart of a dashboard, leaving the rest untouched."""
@@ -651,6 +704,10 @@ class DashboardStorage:
                     split_by_column=c["split_by_column"] or "",
                     x_label=c["x_label"] or "",
                     y_label=c["y_label"] or "",
+                    description=_get_row_value(c, "description") or "",
+                    show_caption=bool(int(_get_row_value(c, "show_caption") or 0)),
+                    description_updated_by=_get_row_value(c, "description_updated_by") or "",
+                    description_updated_at=_get_row_value(c, "description_updated_at") or "",
                 )
             )
         kpi_cards: list[DashboardKpiCard] = []
@@ -862,8 +919,9 @@ class DashboardStorage:
                 cur.execute(
                     """
                     INSERT INTO dbo.dashboard_charts
-                    (dashboard_id, chart_type, x_column, y_column, aggregation, title, series, split_by_column, x_label, y_label)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    (dashboard_id, chart_type, x_column, y_column, aggregation, title, series, split_by_column, x_label, y_label,
+                     description, show_caption, description_updated_by, description_updated_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """,
                     (
                         db_id,
@@ -876,6 +934,10 @@ class DashboardStorage:
                         chart.split_by_column,
                         chart.x_label,
                         chart.y_label,
+                        chart.description,
+                        int(chart.show_caption),
+                        chart.description_updated_by,
+                        chart.description_updated_at,
                     ),
                 )
             cur.execute(

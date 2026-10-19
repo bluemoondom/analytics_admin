@@ -35,6 +35,12 @@ Analytics Admin is a multi-user business intelligence platform that allows organ
 - Toggle for displaying or hiding gridlines
 - Configuration of chart dimensions and layout, including the number of charts displayed per row
 - KPI cards with compare columns
+- KPI aggregation **Last value (first table row)**: takes the value shown in the top row of the table, respecting the current sorting (including multi-column sorting) and grouping; compared with the same column it uses the second row (e.g. this month against last month)
+- Charts are aggregated in the database over all filtered rows, not only the rows loaded into the table
+- Chart description (ⓘ in the chart header): a rich-text note (bold, italic, underline, lists, links, highlight and column references that follow column renames), optionally shown as a subtitle under the chart title and included in the PDF export
+- **Where the data comes from** is filled in automatically for every chart: view, axes, split, each series with its aggregation, the formula of custom view columns, dashboard filters and view conditions, with a link to open the view in View modeling
+- Descriptions are sanitized on the server (allowlist of tags and attributes), so they cannot carry scripts or foreign markup
+- The enlarged chart is remembered per dashboard; deleting a chart or KPI card asks for confirmation
  
 ---
 
@@ -130,7 +136,9 @@ The application is started with the following command:
 python -m src.web.server
 ```
 
-Database changes are applied automatically on startup. The metadata database gets the `view_shares` table and a `share_uuid` column on `connectors` (existing connectors receive a code automatically), so the database user needs permission to create and alter tables.
+Database changes are applied automatically on startup. The metadata database gets the `view_shares` table and a `share_uuid` column on `connectors` (existing connectors receive a code automatically), the `expanded_chart` column on `dashboards` and the `description`, `show_caption`, `description_updated_by` and `description_updated_at` columns on `dashboard_charts`, so the database user needs permission to create and alter tables.
+
+Chart.js and jsPDF are served from `src/web/static/vendor` (see the README there); no external CDN is needed.
 
 ### Dependencies
 
@@ -196,5 +204,9 @@ Database changes are applied automatically on startup. The metadata database get
 ![Chart types: grouped bar, 100 % stacked bar, horizontal bar, stacked area, pie and funnel](img/screen11.jpg)
 
 ![Chart settings: one series rendered as bars, another as a line](img/screen12.jpg)
+
+![Chart description with the automatic "Where the data comes from" section](img/screen13.jpg)
+
+![Editing a chart description: formatting, links, highlight and column references](img/screen14.jpg)
 
 ---

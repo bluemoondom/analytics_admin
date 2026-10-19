@@ -135,6 +135,10 @@ def dashboard_to_query_payload(dashboard: Dashboard) -> DataQueryRequest:
     )
 
 
+# KPI aggregations taken from a row of the displayed table (computed in the browser).
+TABLE_ROW_AGGREGATIONS = {"first", "second"}
+
+
 def _aggregate_rows(rows: list[dict[str, Any]], column: str, aggregation: str) -> float:
     """Aggregate a column across rows on the server side."""
     values = [float(r.get(column, 0) or 0) for r in rows]
@@ -157,7 +161,15 @@ def run_kpi_query(
     payload: DataQueryRequest,
     connector=None,
 ) -> dict[str, Any]:
-    """Return value, previous value and change percentage for a KPI card."""
+    """Return value, previous value and change percentage for a KPI card.
+
+    ``first`` / ``second`` mean "the value in the first / second row of the
+    table as the user sees it" (with its sorting and grouping). That table
+    lives in the browser, so these values are left to the client (None here).
+    """
+    table_row_aggs = TABLE_ROW_AGGREGATIONS
+    if (kpi.aggregation or "").lower() in table_row_aggs:
+        return {"value": None, "previous_value": None, "change_pct": None, "from_table": True}
     current_data = run_data_query(payload, connector=connector)
     current = _aggregate_rows(
         current_data.get("rows", []), kpi.column, kpi.aggregation
@@ -165,7 +177,7 @@ def run_kpi_query(
 
     previous = None
     change_pct = None
-    if kpi.compare_with_previous:
+    if kpi.compare_with_previous and (kpi.previous_aggregation or "").lower() not in table_row_aggs:
         previous_payload = payload.model_copy()
         previous_data = run_data_query(previous_payload, connector=connector)
         previous = _aggregate_rows(

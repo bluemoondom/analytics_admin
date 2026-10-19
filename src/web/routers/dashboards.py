@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime as dt
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -9,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from src.web.auth import require_user
 from src.web.models.dashboard import (
     ChartDataRequest,
+    ChartDescriptionUpdate,
     Dashboard,
     DashboardSummary,
     DataQueryRequest,
@@ -152,6 +154,35 @@ def update_dashboard(
         dashboard.user_id = existing.user_id
         dashboard.connector_id = existing.connector_id
     return storage.save_dashboard(dashboard)
+
+
+@router.put("/{dashboard_id}/charts/{chart_id}/description")
+def set_chart_description(
+    dashboard_id: int,
+    chart_id: int,
+    payload: ChartDescriptionUpdate,
+    storage: StorageDep,
+    user: Annotated[User, Depends(require_user)],
+):
+    """Save the description of one chart without saving other dashboard changes."""
+    existing = storage.get_dashboard_for_user(dashboard_id, user)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Dashboard not found")
+    if not any(c.id == chart_id for c in existing.charts):
+        raise HTTPException(status_code=404, detail="Chart not found")
+    updated_at = dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
+    updated_by = user.email or ""
+    if not storage.set_chart_description(
+        dashboard_id, chart_id, payload.description, payload.show_caption, updated_by, updated_at
+    ):
+        raise HTTPException(status_code=404, detail="Chart not found")
+    return {
+        "id": chart_id,
+        "description": payload.description,
+        "show_caption": payload.show_caption,
+        "description_updated_by": updated_by,
+        "description_updated_at": updated_at,
+    }
 
 
 @router.put("/{dashboard_id}/expanded-chart")

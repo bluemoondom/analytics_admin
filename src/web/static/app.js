@@ -699,6 +699,7 @@
   }
 
   function showConnectorSection() {
+    closeChartInfo();
     document.querySelectorAll('.top-menu button').forEach((btn) => btn.classList.remove('active', 'primary'));
     $('#menu-connectors')?.classList.add('active', 'primary');
     $('#dashboard-menu-section').classList.add('hidden');
@@ -714,6 +715,7 @@
   function showDashboardSection() {
     // Views may have been created, renamed or deleted in View modeling meanwhile.
     reloadViewsQuietly();
+    state.viewLineage = new Map();
     const dashBtn = $('#menu-dashboards');
     const viewBtn = $('#menu-view-modeling');
     const connBtn = $('#menu-connectors');
@@ -733,6 +735,7 @@
   }
 
   function showViewModelingSection() {
+    closeChartInfo();
     const dashBtn = $('#menu-dashboards');
     const viewBtn = $('#menu-view-modeling');
     const connBtn = $('#menu-connectors');
@@ -755,6 +758,7 @@
     bindControl('add-series', 'click', () => addSeriesRow());
     bindControl('add-kpi', 'click', addKpi);
     bindControl('kpi-compare', 'change', toggleKpiCompare);
+    bindControl('kpi-aggregation', 'change', updateKpiAggregationHint);
     bindBackgroundThemeSelect();
     bindCustomChartTypeSelect();
     bindControl('export-excel', 'click', exportExcel);
@@ -1217,6 +1221,7 @@
   }
 
   function newDashboard() {
+    closeChartInfo();
     showDashboardSection();
     state.currentDashboard = {
       id: null,
@@ -1270,6 +1275,7 @@
   }
 
   async function openDashboard(id) {
+    closeChartInfo();
     const dash = await api('GET', '/' + id);
     state.currentDashboard = dash;
     state.chartInstances = {};
@@ -2073,6 +2079,9 @@
     const dimCols = explicitDimCols.filter(c => rawCols.includes(c));
     const drillCols = dimCols.slice(1);
     const rows = state.data.rows || [];
+    // The first two rows as displayed (after sorting and grouping), used by
+    // KPI cards showing the "last value" from the top of the table.
+    state.tableTopRows = rows.slice(0, 2);
 
     // Detail-group mode: dimensions without measures => show raw rows grouped by the first dimension.
     if (dimCols.length && !measureCols.length) {
@@ -2117,8 +2126,10 @@
     if (dimCols.length >= 1) {
       const mainDim = dimCols[0];
       const groups = groupByKeys(rows, [mainDim]);
+      state.tableTopRows = [];
       groups.forEach(({ keyValues, rows: groupRows }) => {
         const mainRow = buildSummaryRow(groupRows, mainHeaderCols, [mainDim], drillCols, undefined, dimCols);
+        if (state.tableTopRows.length < 2) state.tableTopRows.push(mainRow);
         const groupKey = keyValues.join('|');
         const expandable = dimCols.length > 1 || attrCols.length > 0;
         const r = createTableRow(mainHeaderCols, mainRow, 'group-row', expandable, groupKey, groupRows.length, drillCols);
@@ -2165,6 +2176,7 @@
 
     // Group header rows followed by raw detail rows for each group.
     const groups = groupByKeys(rows, [mainDim]);
+    state.tableTopRows = groups.flatMap(g => g.rows).slice(0, 2);
     groups.forEach(({ keyValues, rows: groupRows }) => {
       const groupTr = document.createElement('tr');
       groupTr.className = 'group-header-row';
@@ -2470,6 +2482,7 @@
   }
 
   function clearTable() {
+    state.tableTopRows = [];
     $('#data-table thead').innerHTML = '';
     $('#data-table tbody').innerHTML = '';
     $('#row-count').textContent = '';
@@ -2497,7 +2510,11 @@
       decimals: parseInt($('#kpi-decimals').value, 10) || 0,
       compare_with_previous: $('#kpi-compare').checked,
       previous_column: $('#kpi-compare').checked ? ($('#kpi-previous-column').value || column) : '',
-      previous_aggregation: $('#kpi-aggregation').value,
+      // "Last value" compared with the same column takes the second table row
+      // (e.g. this month vs. last month); another column is read from the top row.
+      previous_aggregation: $('#kpi-aggregation').value === 'first'
+        ? (($('#kpi-previous-column').value || column) === column ? 'second' : 'first')
+        : $('#kpi-aggregation').value,
       color: $('#kpi-color').value || '#818cf8',
       thresholds: [],
     };
@@ -2541,6 +2558,7 @@
       dash.kpi_cards.forEach((kpi, idx) => {
         state.kpiValues[idx] = { value: computeKpiValue(kpi) };
       });
+      applyTableKpiValues();
       return;
     }
     try {
@@ -2550,6 +2568,43 @@
       console.error('KPI load failed', err);
       state.kpiValues = {};
     }
+    applyTableKpiValues();
+  }
+
+  const KPI_TABLE_ROW = { first: 0, second: 1 };
+
+  function tableRowValue(rowIdx, column) {
+    const row = (state.tableTopRows || [])[rowIdx];
+    if (!row || !Object.prototype.hasOwnProperty.call(row, column)) return null;
+    const value = row[column];
+    return value === '' || value === undefined ? null : value;
+  }
+
+  // "Last value" KPIs: the value shown in the first row of the table, with the
+  // table's current (possibly multi-column) sorting and grouping.
+  function applyTableKpiValues() {
+    const dash = state.currentDashboard;
+    (dash.kpi_cards || []).forEach((kpi, idx) => {
+      if (!(String(kpi.aggregation || '').toLowerCase() in KPI_TABLE_ROW)) return;
+      const lookupId = kpi.id === null || kpi.id === undefined ? idx : kpi.id;
+      const value = tableRowValue(KPI_TABLE_ROW[kpi.aggregation.toLowerCase()], kpi.column);
+      let previous = null;
+      let change = null;
+      if (kpi.compare_with_previous) {
+        const prevAgg = String(kpi.previous_aggregation || 'second').toLowerCase();
+        previous = tableRowValue(prevAgg in KPI_TABLE_ROW ? KPI_TABLE_ROW[prevAgg] : 1, kpi.previous_column || kpi.column);
+        const cur = parseFloat(value);
+        const prev = parseFloat(previous);
+        if (Number.isFinite(cur) && Number.isFinite(prev) && prev !== 0) change = ((cur - prev) / prev) * 100;
+      }
+      state.kpiValues[lookupId] = { value, previous_value: previous, change_pct: change, from_table: true };
+    });
+  }
+
+  function updateKpiAggregationHint() {
+    const agg = $('#kpi-aggregation');
+    const hint = $('#kpi-first-hint');
+    if (agg && hint) hint.classList.toggle('hidden', agg.value !== 'first');
   }
 
   function formatKpiValue(value, decimals) {
@@ -2625,7 +2680,7 @@
           <button data-idx="${idx}" class="card-icon-btn danger small remove-kpi" type="button" title="${esc(t('kpi_remove_title'))}" aria-label="${esc(t('kpi_remove_title'))}">${ICONS.remove}</button>
         </div>
         <div class="kpi-body">
-          <span class="kpi-value">${formatKpiDisplay(kpi, value)}</span>
+          <span class="kpi-value"${computed.from_table ? ` title="${esc(t('kpi_first_value_title'))}"` : ''}>${formatKpiDisplay(kpi, value)}</span>
           ${change !== null && change !== undefined ? `<span class="kpi-change ${change > 0 ? 'positive' : (change < 0 ? 'negative' : 'neutral')}">${change > 0 ? '↑' : (change < 0 ? '↓' : '→')} ${formatKpiValue(Math.abs(change), 1)}%</span>` : ''}
         </div>
       `;
@@ -2792,6 +2847,52 @@
     }
   }
 
+  // Text for the PDF is drawn on a canvas and placed as an image: jsPDF's
+  // built-in fonts cannot render Czech (or other non-Latin-1) characters.
+  const PDF_PX_PER_MM = 8;
+  function pdfTextImage(blocks, widthMm, { fontPt = 8.5, bold = false, color = '#374151', maxLines = 14 } = {}) {
+    const fontPx = fontPt * 0.3528 * PDF_PX_PER_MM;
+    const lineH = fontPx * 1.38;
+    const widthPx = Math.round(widthMm * PDF_PX_PER_MM);
+    const family = getComputedStyle(document.body).fontFamily || 'sans-serif';
+    const measure = document.createElement('canvas').getContext('2d');
+    const font = `${bold ? '600 ' : ''}${fontPx}px ${family}`;
+    measure.font = font;
+    const lines = [];
+    blocks.forEach(block => {
+      const indent = block.bullet ? fontPx * 1.3 : 0;
+      const words = String(block.text).split(/\s+/).filter(Boolean);
+      let line = '';
+      let first = true;
+      const push = (text) => { lines.push({ text, indent, bullet: first ? block.bullet : '' }); first = false; };
+      words.forEach(word => {
+        const next = line ? line + ' ' + word : word;
+        if (measure.measureText(next).width > widthPx - indent && line) { push(line); line = word; } else { line = next; }
+      });
+      if (line) push(line);
+    });
+    let shown = lines;
+    if (lines.length > maxLines) {
+      shown = lines.slice(0, maxLines);
+      shown[maxLines - 1] = { ...shown[maxLines - 1], text: shown[maxLines - 1].text.replace(/\s*\S*$/, '') + ' …' };
+    }
+    const canvas = document.createElement('canvas');
+    canvas.width = widthPx;
+    canvas.height = Math.max(1, Math.ceil(shown.length * lineH + fontPx * 0.4));
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.font = font;
+    ctx.fillStyle = color;
+    ctx.textBaseline = 'top';
+    shown.forEach((line, i) => {
+      const y = i * lineH + fontPx * 0.15;
+      if (line.bullet) ctx.fillText(line.bullet, 0, y);
+      ctx.fillText(line.text, line.indent, y);
+    });
+    return { data: canvas.toDataURL('image/png'), heightMm: canvas.height / PDF_PX_PER_MM, widthMm };
+  }
+
   async function exportPdf() {
     if (!state.currentDashboard || !state.currentDashboard.charts.length) {
       alert(t('pdf_export_no_charts'));
@@ -2806,27 +2907,46 @@
       const gap = 10;
       const cols = 2;
       const cardWidth = (pageWidth - margin * 2 - gap * (cols - 1)) / cols;
-      const cardHeight = 80;
-      let x = margin;
-      let y = margin;
+      const chartHeight = 80;
 
+      // One block per chart: title, chart image and (if written) its description.
+      const blocks = [];
       state.currentDashboard.charts.forEach((chart, idx) => {
         const canvas = document.getElementById('chart-canvas-' + idx);
         if (!canvas) return;
-        const img = canvas.toDataURL('image/png');
-        pdf.addImage(img, 'PNG', x, y, cardWidth, cardHeight);
-        pdf.setFontSize(10);
-        pdf.text(chart.title || t('chart_fallback_title'), x, y - 2);
-        x += cardWidth + gap;
-        if (x + cardWidth > pageWidth - margin) {
-          x = margin;
-          y += cardHeight + gap;
-          if (y + cardHeight > pageHeight - margin) {
-            pdf.addPage();
-            y = margin;
-          }
-        }
+        const title = pdfTextImage([{ text: chart.title || t('chart_fallback_title') }], cardWidth, { fontPt: 10.5, bold: true, color: '#111827', maxLines: 2 });
+        const descBlocks = chartHasDescription(chart) ? descriptionBlocks(chart.description) : [];
+        const desc = descBlocks.length ? pdfTextImage(descBlocks, cardWidth, { fontPt: 8, color: '#4b5563' }) : null;
+        blocks.push({
+          title,
+          image: canvas.toDataURL('image/png'),
+          desc,
+          height: title.heightMm + 1.5 + chartHeight + (desc ? 3 + desc.heightMm : 0),
+        });
       });
+
+      let y = margin;
+      for (let i = 0; i < blocks.length; i += cols) {
+        const row = blocks.slice(i, i + cols);
+        const rowHeight = Math.max(...row.map(b => b.height));
+        if (y > margin && y + rowHeight > pageHeight - margin) {
+          pdf.addPage();
+          y = margin;
+        }
+        row.forEach((b, c) => {
+          const x = margin + c * (cardWidth + gap);
+          let by = y;
+          pdf.addImage(b.title.data, 'PNG', x, by, b.title.widthMm, b.title.heightMm);
+          by += b.title.heightMm + 1.5;
+          pdf.addImage(b.image, 'PNG', x, by, cardWidth, chartHeight);
+          by += chartHeight;
+          if (b.desc) {
+            by += 3;
+            pdf.addImage(b.desc.data, 'PNG', x, by, b.desc.widthMm, b.desc.heightMm);
+          }
+        });
+        y += rowHeight + gap;
+      }
 
       const filename = (state.currentDashboard.name || 'dashboard').replace(/\s+/g, '_') + '_grafy.pdf';
       pdf.save(filename);
@@ -3095,6 +3215,15 @@
     expand: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M10 20H4v-6M20 4l-6.5 6.5M4 20l6.5-6.5"/></svg>',
     collapse: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 10h-6V4M4 14h6v6M14 10l6.5-6.5M10 14l-6.5 6.5"/></svg>',
     remove: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17"/></svg>',
+    info: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v5M12 7.6v.01"/></svg>',
+    pencil: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L18.5 9.5a2.1 2.1 0 0 0-4-4L4 16v4zM13.5 6.5l4 4"/></svg>',
+    database: '<svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6"/></svg>',
+    external: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17L17 7M9 7h8v8"/></svg>',
+    bullets: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01"/></svg>',
+    numbers: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 6h10M10 12h10M10 18h10M4 5h1v4M4 9h2M4 15.5c.5-.7 2-.7 2 .3 0 .8-2 1.5-2 2.2h2"/></svg>',
+    link: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg>',
+    highlight: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 15l-4 4h5l1.5-1.5M9 15l6-9 4 3-6 9-4-3z"/></svg>',
+    column: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h9M4 18h6M17 14v7M13.5 17.5h7"/></svg>',
   };
 
   // Styled replacement for window.confirm(); resolves to true when confirmed.
@@ -3138,6 +3267,735 @@
     });
   }
 
+  // ------------------------------------------------------------------
+  // Chart description ("O grafu"): a rich-text note written by people plus
+  // an automatic "where the data comes from" section built from the chart
+  // settings and the view definition, so it never goes stale.
+  // ------------------------------------------------------------------
+  const DESCRIPTION_TAGS = {
+    P: [], DIV: [], BR: [], B: [], STRONG: [], I: [], EM: [], U: [], MARK: [],
+    UL: [], OL: [], LI: [], A: ['href'], SPAN: ['class', 'data-col'],
+  };
+  const DESCRIPTION_DROP = new Set(['SCRIPT', 'STYLE', 'TEMPLATE', 'IFRAME', 'OBJECT', 'EMBED', 'NOSCRIPT', 'SVG', 'MATH', 'TEXTAREA', 'SELECT']);
+
+  // Client-side mirror of the server allowlist (services/html_sanitizer.py);
+  // the server sanitizes on save, this guards what is put into the page.
+  function sanitizeDescriptionHtml(html) {
+    const src = new DOMParser().parseFromString(`<div>${html || ''}</div>`, 'text/html').body.firstElementChild;
+    const out = document.createElement('div');
+    function copy(node, target) {
+      node.childNodes.forEach(child => {
+        if (child.nodeType === Node.TEXT_NODE) {
+          target.appendChild(document.createTextNode(child.textContent));
+          return;
+        }
+        if (child.nodeType !== Node.ELEMENT_NODE || DESCRIPTION_DROP.has(child.tagName)) return;
+        const allowed = DESCRIPTION_TAGS[child.tagName];
+        if (!allowed) { copy(child, target); return; }
+        if (child.tagName === 'SPAN') {
+          if (child.getAttribute('class') !== 'col-ref' || !child.dataset.col) { copy(child, target); return; }
+          const chip = document.createElement('span');
+          chip.className = 'col-ref';
+          chip.dataset.col = child.dataset.col;
+          chip.textContent = child.textContent;
+          target.appendChild(chip);
+          return;
+        }
+        if (child.tagName === 'A') {
+          const href = (child.getAttribute('href') || '').trim();
+          if (!/^(https?:|mailto:)/i.test(href.replace(/[\x00-\x20]/g, ''))) { copy(child, target); return; }
+          const a = document.createElement('a');
+          a.href = href;
+          a.target = '_blank';
+          a.rel = 'noopener noreferrer';
+          copy(child, a);
+          target.appendChild(a);
+          return;
+        }
+        const el = document.createElement(child.tagName.toLowerCase());
+        copy(child, el);
+        target.appendChild(el);
+      });
+    }
+    copy(src, out);
+    return out;
+  }
+
+  // Column chips always show the current column name (aliases can change).
+  function refreshColumnRefs(root) {
+    root.querySelectorAll('span.col-ref').forEach(chip => {
+      chip.textContent = displayName(chip.dataset.col);
+      chip.title = chip.dataset.col;
+    });
+    return root;
+  }
+
+  function descriptionIsEmpty(html) {
+    if (!html) return true;
+    const root = sanitizeDescriptionHtml(html);
+    return !root.textContent.trim() && !root.querySelector('span.col-ref');
+  }
+
+  // Plain-text blocks (paragraphs and list items) of a description.
+  function descriptionBlocks(html) {
+    const root = refreshColumnRefs(sanitizeDescriptionHtml(html));
+    const blocks = [];
+    let inline = '';
+    const flush = () => { if (inline.trim()) blocks.push({ text: inline.replace(/\s+/g, ' ').trim() }); inline = ''; };
+    root.childNodes.forEach(node => {
+      if (node.nodeType === Node.TEXT_NODE) { inline += node.textContent; return; }
+      const tag = node.tagName;
+      if (tag === 'BR') { flush(); return; }
+      if (tag === 'UL' || tag === 'OL') {
+        flush();
+        [...node.children].forEach((li, i) => {
+          const text = li.textContent.replace(/\s+/g, ' ').trim();
+          if (text) blocks.push({ text, bullet: tag === 'OL' ? `${i + 1}.` : '•' });
+        });
+        return;
+      }
+      if (tag === 'P' || tag === 'DIV') { flush(); inline = node.textContent; flush(); return; }
+      inline += node.textContent;
+    });
+    flush();
+    return blocks;
+  }
+
+  function descriptionCaption(html) {
+    const first = descriptionBlocks(html)[0];
+    return first ? first.text : '';
+  }
+
+  function chartHasDescription(chart) {
+    return !descriptionIsEmpty(chart && chart.description);
+  }
+
+  function currentUserEmail() {
+    const el = document.querySelector('.user-email');
+    return el ? el.textContent.trim() : '';
+  }
+
+  function formatDescriptionDate(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return iso;
+    const lang = (window.I18n && window.I18n.getLang && window.I18n.getLang()) || document.documentElement.lang || undefined;
+    try { return d.toLocaleDateString(lang, { day: 'numeric', month: 'numeric', year: 'numeric' }); } catch (e) { return d.toLocaleDateString(); }
+  }
+
+  // --- View lineage -------------------------------------------------------
+  async function getJson(url) {
+    const res = await fetch(url, { headers: { Accept: 'application/json' } });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  }
+
+  function viewWhereSql(sql) {
+    // Best effort: the WHERE part of the view's top-level SELECT.
+    const m = String(sql || '').match(/\bWHERE\b([\s\S]*?)(?:\bGROUP\s+BY\b|\bORDER\s+BY\b|\bHAVING\b|$)/i);
+    return m ? m[1].replace(/\s+/g, ' ').trim() : '';
+  }
+
+  async function loadViewLineage(viewName) {
+    const list = await getJson('/api/views/saved');
+    const match = (list || []).find(v => (v.NazevSys || v.Nazev) === viewName);
+    if (!match) return { found: false };
+    const id = match.ID || match.id;
+    const view = await getJson('/api/views/saved/' + encodeURIComponent(id));
+    const aggs = view.aggregations || {};
+    const columns = {};
+    (view.selected_columns || []).forEach(c => {
+      const table = c.table || view.primary_table || '';
+      const agg = aggs[`${table}.${c.name}`] || aggs[c.name] || '';
+      columns[c.alias || c.name] = { kind: 'column', table, name: c.name, agg: String(agg).toUpperCase() };
+    });
+    (view.custom_columns || []).forEach(c => {
+      if (c.alias) columns[c.alias] = { kind: 'custom', definition: c.definition || '' };
+    });
+    return {
+      found: true,
+      id,
+      access: view.access || match.access || 'owner',
+      description: view.description || '',
+      columns,
+      where: viewWhereSql(view.raw_sql),
+      grouped: (view.group_by || []).length > 0,
+    };
+  }
+
+  function viewLineage(viewName) {
+    if (!state.viewLineage) state.viewLineage = new Map();
+    if (!state.viewLineage.has(viewName)) {
+      state.viewLineage.set(viewName, loadViewLineage(viewName).catch(err => {
+        console.warn('View lineage unavailable', err);
+        state.viewLineage.delete(viewName);
+        return { found: false, error: true };
+      }));
+    }
+    return state.viewLineage.get(viewName);
+  }
+
+  function aggregationWord(agg, chartType) {
+    if (chartType === 'scatter') return t('lineage_agg_values');
+    const key = { sum: 'lineage_agg_sum', avg: 'lineage_agg_avg', count: 'lineage_agg_count', min: 'lineage_agg_min', max: 'lineage_agg_max' }[String(agg || 'sum').toLowerCase()];
+    return key ? t(key) : String(agg);
+  }
+
+  function lineageSourceHtml(col, lineage) {
+    const info = lineage && lineage.found ? lineage.columns[col] : null;
+    if (!info) return '';
+    if (info.kind === 'custom') {
+      return `<code class="cip-code">${esc(info.definition)}</code><span class="cip-muted">${esc(t('lineage_custom_column'))}</span>`;
+    }
+    const source = info.agg
+      ? t('lineage_view_aggregated', { agg: info.agg, table: info.table, column: info.name })
+      : t('lineage_table_column', { table: info.table, column: info.name });
+    return `<span class="cip-muted cip-source">${esc(source)}</span>`;
+  }
+
+  function filterText(f) {
+    const name = displayName(f.column);
+    if (f.type === 'text') return `${name} ${f.operator || '='} "${f.value}"`;
+    const lo = f.min_value ?? f.from_value;
+    const hi = f.max_value ?? f.to_value;
+    if (lo && hi) return `${name}: ${lo} – ${hi}`;
+    if (lo) return `${name} ≥ ${lo}`;
+    if (hi) return `${name} ≤ ${hi}`;
+    return name;
+  }
+
+  function lineageHtml(chart, lineage) {
+    const dash = state.currentDashboard;
+    const viewMeta = (state.views || []).find(v => v.system_name === dash.view_name);
+    const viewLabel = (viewMeta && viewMeta.display_name) || dash.view_display_name || dash.view_name;
+    const rows = [];
+    const row = (label, html) => rows.push(`<dt>${esc(label)}</dt><dd>${html}</dd>`);
+    row(t('lineage_view'), `${esc(viewLabel)}${viewLabel !== dash.view_name ? ` <span class="cip-muted">· ${esc(dash.view_name)}</span>` : ''}`
+      + (lineage && lineage.description ? `<span class="cip-muted cip-source">${esc(lineage.description)}</span>` : ''));
+    if (chart.x_column) row(t('lineage_x_axis'), esc(displayName(chart.x_column)) + lineageSourceHtml(chart.x_column, lineage));
+    if (chart.split_by_column) row(t('lineage_split'), esc(displayName(chart.split_by_column)) + lineageSourceHtml(chart.split_by_column, lineage));
+    chartSeries(chart).forEach(s => {
+      const label = s.label || displayName(s.y_column);
+      const how = t('lineage_series_value', { agg: aggregationWord(s.aggregation, chart.chart_type), column: displayName(s.y_column) });
+      row(t('lineage_series'), `${esc(label)} = ${esc(how)}${lineageSourceHtml(s.y_column, lineage)}`);
+    });
+    const filters = collectFilters();
+    row(t('lineage_filters'), filters.length
+      ? filters.map(f => esc(filterText(f))).join('<br>') + ` <span class="cip-muted">· ${esc(t('lineage_dashboard_filters'))}</span>`
+      : `<span class="cip-muted">${esc(t('lineage_no_filters'))}</span>`);
+    if (lineage && lineage.found && lineage.where) {
+      row(t('lineage_view_conditions'), `<code class="cip-code">${esc(lineage.where.length > 400 ? lineage.where.slice(0, 400) + '…' : lineage.where)}</code>`);
+    }
+    if (lineage && lineage.found && lineage.grouped) {
+      row(t('lineage_view_grouping'), `<span class="cip-muted">${esc(t('lineage_view_grouped'))}</span>`);
+    }
+    let footer = '';
+    if (lineage && lineage.found) {
+      footer = `<button type="button" class="cip-link" data-view-id="${esc(lineage.id)}" data-access="${esc(lineage.access)}">${ICONS.external}<span>${esc(t('lineage_open_view'))}</span></button>`;
+    } else if (lineage && !lineage.error) {
+      footer = `<p class="cip-muted cip-note">${esc(t('lineage_view_not_modeled'))}</p>`;
+    }
+    return `<dl class="cip-grid">${rows.join('')}</dl>${footer}`;
+  }
+
+  // --- Popover --------------------------------------------------------------
+  let chartInfo = null; // { idx, pop, button, editing, dirty, cleanup }
+
+  function closeChartInfo() {
+    if (!chartInfo) return;
+    chartInfo.cleanup.forEach(fn => fn());
+    chartInfo.pop.remove();
+    if (chartInfo.button && document.contains(chartInfo.button)) {
+      chartInfo.button.classList.remove('active');
+      chartInfo.button.setAttribute('aria-expanded', 'false');
+    }
+    chartInfo = null;
+  }
+
+  function positionChartInfo() {
+    if (!chartInfo) return;
+    const { pop, button } = chartInfo;
+    if (!document.contains(button)) { closeChartInfo(); return; }
+    const r = button.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const width = Math.min(480, vw - 24);
+    pop.style.width = width + 'px';
+    const left = Math.max(12, Math.min(r.right + 10 - width, vw - width - 12));
+    pop.style.left = left + 'px';
+    pop.style.setProperty('--arrow-left', Math.max(16, Math.min(width - 24, r.left + r.width / 2 - left - 6)) + 'px');
+    const below = vh - r.bottom - 22;
+    const above = r.top - 22;
+    const natural = pop.scrollHeight;
+    const placeBelow = below >= Math.min(natural, 320) || below >= above;
+    pop.classList.toggle('above', !placeBelow);
+    const maxH = Math.max(180, placeBelow ? below : above);
+    pop.style.maxHeight = maxH + 'px';
+    const height = Math.min(natural, maxH);
+    pop.style.top = (placeBelow ? r.bottom + 10 : r.top - 10 - height) + 'px';
+  }
+
+  async function openChartInfo(idx, button, startEditing = false) {
+    if (chartInfo && chartInfo.idx === idx && !startEditing) { closeChartInfo(); return; }
+    closeChartInfo();
+    const pop = document.createElement('div');
+    pop.className = 'chart-info-pop';
+    pop.setAttribute('role', 'dialog');
+    pop.setAttribute('aria-modal', 'false');
+    document.body.appendChild(pop);
+    button.classList.add('active');
+    button.setAttribute('aria-expanded', 'true');
+    chartInfo = { idx, pop, button, editing: false, dirty: false, cleanup: [] };
+    const onDown = (e) => {
+      if (!chartInfo || chartInfo.editing) return;
+      if (pop.contains(e.target) || button.contains(e.target)) return;
+      if (e.target.closest && e.target.closest('#confirm-modal')) return;
+      closeChartInfo();
+    };
+    const onKey = (e) => {
+      if (e.key !== 'Escape' || !chartInfo || document.querySelector('#confirm-modal:not(.hidden)')) return;
+      e.preventDefault();
+      if (chartInfo.editing) cancelChartDescriptionEdit();
+      else { const b = chartInfo.button; closeChartInfo(); b.focus(); }
+    };
+    const onMove = () => positionChartInfo();
+    document.addEventListener('mousedown', onDown, true);
+    document.addEventListener('keydown', onKey);
+    window.addEventListener('resize', onMove);
+    document.addEventListener('scroll', onMove, true);
+    chartInfo.cleanup.push(
+      () => document.removeEventListener('mousedown', onDown, true),
+      () => document.removeEventListener('keydown', onKey),
+      () => window.removeEventListener('resize', onMove),
+      () => document.removeEventListener('scroll', onMove, true),
+    );
+    if (startEditing) renderChartDescriptionEditor();
+    else renderChartInfoRead();
+  }
+
+  function renderChartInfoRead() {
+    if (!chartInfo) return;
+    const { idx, pop } = chartInfo;
+    const chart = state.currentDashboard.charts[idx];
+    if (!chart) { closeChartInfo(); return; }
+    chartInfo.editing = false;
+    const has = chartHasDescription(chart);
+    const by = chart.description_updated_by;
+    const at = formatDescriptionDate(chart.description_updated_at);
+    pop.innerHTML = `
+      <div class="cip-head">
+        <h5>${esc(chart.title || t('chart_fallback_title'))}</h5>
+        ${has ? `<button type="button" class="cip-edit">${ICONS.pencil}<span>${esc(t('chart_description_edit'))}</span></button>` : ''}
+        <button type="button" class="card-icon-btn small cip-close" title="${esc(t('chart_description_close'))}" aria-label="${esc(t('chart_description_close'))}">${ICONS.remove}</button>
+      </div>
+      <div class="cip-body"></div>
+      <div class="cip-lineage">
+        <h6>${ICONS.database}<span>${esc(t('lineage_heading'))}</span><span class="cip-auto">${esc(t('lineage_auto_badge'))}</span></h6>
+        <div class="cip-lineage-content"><p class="cip-muted">${esc(t('chart_loading'))}</p></div>
+      </div>
+      ${has && (by || at) ? `<div class="cip-foot">${esc(t('chart_description_updated', { who: by || '—', when: at || '—' }))}</div>` : ''}`;
+    pop.setAttribute('aria-label', chart.title || t('chart_fallback_title'));
+    const body = pop.querySelector('.cip-body');
+    if (has) {
+      body.appendChild(refreshColumnRefs(sanitizeDescriptionHtml(chart.description)));
+    } else {
+      body.innerHTML = `<div class="cip-empty"><p>${esc(t('chart_description_empty'))}</p>
+        <button type="button" class="btn primary small cip-write">${ICONS.pencil}<span>${esc(t('chart_description_write'))}</span></button></div>`;
+    }
+    pop.querySelectorAll('.cip-edit, .cip-write').forEach(b => b.addEventListener('click', renderChartDescriptionEditor));
+    pop.querySelector('.cip-close').addEventListener('click', () => { const b = chartInfo.button; closeChartInfo(); b.focus(); });
+    positionChartInfo();
+    const content = pop.querySelector('.cip-lineage-content');
+    const viewName = state.currentDashboard.view_name;
+    viewLineage(viewName).then(lineage => {
+      if (!chartInfo || chartInfo.pop !== pop || chartInfo.editing) return;
+      content.innerHTML = lineageHtml(chart, lineage);
+      const link = content.querySelector('.cip-link');
+      if (link) link.addEventListener('click', () => openViewInModeling(link.dataset.viewId, link.dataset.access));
+      positionChartInfo();
+    });
+  }
+
+  function openViewInModeling(viewId, access) {
+    closeChartInfo();
+    hideConnectorSection();
+    showViewModelingSection();
+    if (window.ViewModeling && window.ViewModeling.openView) window.ViewModeling.openView(parseInt(viewId, 10), access);
+  }
+
+  // --- Editor ---------------------------------------------------------------
+  function renderChartDescriptionEditor() {
+    if (!chartInfo) return;
+    const { idx, pop } = chartInfo;
+    const chart = state.currentDashboard.charts[idx];
+    chartInfo.editing = true;
+    chartInfo.dirty = false;
+    const tool = (cmd, icon, key) => `<button type="button" class="cde-tool" data-cmd="${cmd}" title="${esc(t(key))}" aria-label="${esc(t(key))}">${icon}</button>`;
+    pop.innerHTML = `
+      <div class="cip-head"><h5>${esc(t('chart_description_heading'))}</h5></div>
+      <div class="cde-toolbar" role="toolbar" aria-label="${esc(t('chart_description_heading'))}">
+        ${tool('bold', '<b>B</b>', 'editor_bold')}${tool('italic', '<i>I</i>', 'editor_italic')}${tool('underline', '<u>U</u>', 'editor_underline')}
+        <span class="cde-sep"></span>
+        ${tool('insertUnorderedList', ICONS.bullets, 'editor_bullets')}${tool('insertOrderedList', ICONS.numbers, 'editor_numbers')}
+        ${tool('link', ICONS.link, 'editor_link')}${tool('mark', ICONS.highlight, 'editor_highlight')}
+        <span class="cde-sep"></span>
+        <button type="button" class="cde-tool cde-insert" data-cmd="column" aria-haspopup="listbox">${ICONS.column}<span>${esc(t('editor_insert_column'))}</span></button>
+      </div>
+      <div class="cde-linkbar hidden">
+        <input type="url" class="cde-link-input" placeholder="https://" aria-label="${esc(t('editor_link'))}">
+        <button type="button" class="btn small primary cde-link-ok">${esc(t('editor_link_apply'))}</button>
+        <button type="button" class="btn small cde-link-remove">${esc(t('editor_link_remove'))}</button>
+      </div>
+      <div class="cde-columns hidden" role="listbox">
+        <input type="search" class="cde-col-search" placeholder="${esc(t('editor_column_search'))}" aria-label="${esc(t('editor_column_search'))}">
+        <div class="cde-col-list"></div>
+      </div>
+      <div class="cde-editor" contenteditable="true" role="textbox" aria-multiline="true" spellcheck="true"
+        aria-label="${esc(t('chart_description_heading'))}" data-placeholder="${esc(t('chart_description_placeholder'))}"></div>
+      <label class="cde-option"><input type="checkbox" class="cde-caption"><span>${esc(t('chart_description_caption_option'))}</span></label>
+      <p class="cde-error hidden" role="alert"></p>
+      <div class="cde-actions">
+        <span class="cde-hint">${esc(t('chart_description_shortcut'))}</span>
+        <button type="button" class="btn cde-cancel">${esc(t('confirm_cancel_button'))}</button>
+        <button type="button" class="btn primary cde-save">${esc(t('chart_description_save'))}</button>
+      </div>`;
+    const editor = pop.querySelector('.cde-editor');
+    const content = sanitizeDescriptionHtml(chart.description || '');
+    refreshColumnRefs(content);
+    content.querySelectorAll('span.col-ref').forEach(chip => chip.setAttribute('contenteditable', 'false'));
+    editor.append(...content.childNodes);
+    updateEmptyState();
+    pop.querySelector('.cde-caption').checked = !!chart.show_caption;
+    try { document.execCommand('styleWithCSS', false, false); } catch (e) { /* older browsers */ }
+    try { document.execCommand('defaultParagraphSeparator', false, 'p'); } catch (e) { /* older browsers */ }
+
+    let savedRange = null;
+    const saveRange = () => {
+      const sel = window.getSelection();
+      if (sel.rangeCount && editor.contains(sel.anchorNode)) savedRange = sel.getRangeAt(0).cloneRange();
+    };
+    const restoreRange = () => {
+      editor.focus();
+      if (!savedRange) return;
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(savedRange);
+    };
+    const markDirty = () => { chartInfo.dirty = true; updateEmptyState(); };
+    function updateEmptyState() {
+      editor.classList.toggle('is-empty', !editor.textContent.trim() && !editor.querySelector('span.col-ref, li'));
+    }
+    // Keep the text in paragraphs: a line typed straight into the editor root
+    // becomes a <p> (lists and paragraphs then nest correctly).
+    function ensureParagraphs() {
+      if (!editor.firstChild) {
+        editor.innerHTML = '<p><br></p>';
+        const r = document.createRange();
+        r.setStart(editor.firstChild, 0);
+        r.collapse(true);
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(r);
+        return;
+      }
+      const loose = [...editor.childNodes].some(n => (n.nodeType === Node.TEXT_NODE && n.textContent.trim())
+        || (n.nodeType === Node.ELEMENT_NODE && !['P', 'DIV', 'UL', 'OL'].includes(n.tagName)));
+      if (loose) document.execCommand('formatBlock', false, 'p');
+    }
+    // Insert a node at the caret (Chrome's insertHTML drops classes and
+    // contenteditable from spans, so chips and highlights are built here).
+    function insertNodeAtCaret(node, trailingSpace = false) {
+      restoreRange();
+      const sel = window.getSelection();
+      if (!sel.rangeCount || !editor.contains(sel.anchorNode)) return;
+      const range = sel.getRangeAt(0);
+      range.deleteContents();
+      range.insertNode(node);
+      let caretAfter = node;
+      if (trailingSpace) {
+        const space = document.createTextNode('\u00a0');
+        node.after(space);
+        caretAfter = space;
+      }
+      const after = document.createRange();
+      after.setStartAfter(caretAfter);
+      after.collapse(true);
+      sel.removeAllRanges();
+      sel.addRange(after);
+      saveRange();
+    }
+    const updateToolState = () => {
+      pop.querySelectorAll('.cde-tool[data-cmd]').forEach(btn => {
+        const cmd = btn.dataset.cmd;
+        let on = false;
+        try {
+          if (['bold', 'italic', 'underline', 'insertUnorderedList', 'insertOrderedList'].includes(cmd)) on = document.queryCommandState(cmd);
+        } catch (e) { on = false; }
+        if (cmd === 'mark' || cmd === 'link') {
+          const sel = window.getSelection();
+          const node = sel.anchorNode && (sel.anchorNode.nodeType === 1 ? sel.anchorNode : sel.anchorNode.parentElement);
+          on = !!(node && editor.contains(node) && node.closest(cmd === 'mark' ? 'mark' : 'a'));
+        }
+        btn.classList.toggle('on', on);
+        btn.setAttribute('aria-pressed', String(on));
+      });
+    };
+    const onSelection = () => { if (chartInfo && chartInfo.pop === pop) { saveRange(); updateToolState(); } };
+    document.addEventListener('selectionchange', onSelection);
+    chartInfo.cleanup.push(() => document.removeEventListener('selectionchange', onSelection));
+
+    editor.addEventListener('input', () => { ensureParagraphs(); markDirty(); positionChartInfo(); });
+    editor.addEventListener('focus', () => { if (!editor.firstChild) ensureParagraphs(); });
+    editor.addEventListener('paste', (e) => {
+      // Pasted content arrives as plain text: no foreign styles or markup.
+      e.preventDefault();
+      const text = (e.clipboardData || window.clipboardData).getData('text/plain');
+      document.execCommand('insertText', false, text);
+    });
+    editor.addEventListener('drop', (e) => e.preventDefault());
+    editor.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); openLinkBar(); }
+    });
+    // Ctrl+Enter saves from anywhere in the editor popover.
+    pop.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); saveDescription(); }
+    });
+    editor.addEventListener('click', (e) => {
+      // Ctrl/Cmd+click opens a link while editing.
+      const a = e.target.closest('a');
+      if (a && (e.ctrlKey || e.metaKey)) window.open(a.href, '_blank', 'noopener');
+    });
+
+    const linkBar = pop.querySelector('.cde-linkbar');
+    const linkInput = pop.querySelector('.cde-link-input');
+    const columnsBox = pop.querySelector('.cde-columns');
+    function closeBars() { linkBar.classList.add('hidden'); columnsBox.classList.add('hidden'); positionChartInfo(); }
+    function openLinkBar() {
+      saveRange();
+      columnsBox.classList.add('hidden');
+      const sel = window.getSelection();
+      const node = sel.anchorNode && (sel.anchorNode.nodeType === 1 ? sel.anchorNode : sel.anchorNode.parentElement);
+      const existing = node && editor.contains(node) ? node.closest('a') : null;
+      linkInput.value = existing ? existing.getAttribute('href') : '';
+      pop.querySelector('.cde-link-remove').classList.toggle('hidden', !existing);
+      linkBar.classList.remove('hidden');
+      positionChartInfo();
+      linkInput.focus();
+    }
+    function applyLink() {
+      let url = linkInput.value.trim();
+      if (url && !/^(https?:|mailto:)/i.test(url)) url = (url.includes('@') && !url.includes('/') ? 'mailto:' : 'https://') + url;
+      restoreRange();
+      const sel = window.getSelection();
+      if (url) {
+        if (sel.isCollapsed) {
+          const a = document.createElement('a');
+          a.href = url;
+          a.textContent = url;
+          insertNodeAtCaret(a, true);
+        } else {
+          document.execCommand('createLink', false, url);
+        }
+      }
+      markDirty();
+      closeBars();
+      editor.focus();
+    }
+    linkInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); applyLink(); }
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeBars(); restoreRange(); }
+    });
+    pop.querySelector('.cde-link-ok').addEventListener('click', applyLink);
+    pop.querySelector('.cde-link-remove').addEventListener('click', () => {
+      restoreRange();
+      const sel = window.getSelection();
+      const node = sel.anchorNode && (sel.anchorNode.nodeType === 1 ? sel.anchorNode : sel.anchorNode.parentElement);
+      const a = node && node.closest('a');
+      if (a) { const range = document.createRange(); range.selectNodeContents(a); sel.removeAllRanges(); sel.addRange(range); }
+      document.execCommand('unlink');
+      markDirty();
+      closeBars();
+    });
+
+    const colSearch = pop.querySelector('.cde-col-search');
+    const colList = pop.querySelector('.cde-col-list');
+    function renderColumnList() {
+      const q = colSearch.value.trim().toLowerCase();
+      const cols = (state.columns || []).map(c => c.name)
+        .filter(name => !q || name.toLowerCase().includes(q) || displayName(name).toLowerCase().includes(q));
+      colList.innerHTML = cols.length
+        ? cols.map((name, i) => `<button type="button" class="cde-col${i === 0 ? ' sel' : ''}" data-col="${esc(name)}" role="option"><span>${esc(displayName(name))}</span>${displayName(name) !== name ? `<small>${esc(name)}</small>` : ''}</button>`).join('')
+        : `<p class="cip-muted">${esc(t('editor_column_none'))}</p>`;
+      colList.querySelectorAll('.cde-col').forEach(b => b.addEventListener('mousedown', (e) => { e.preventDefault(); insertColumn(b.dataset.col); }));
+    }
+    function insertColumn(name) {
+      const chip = document.createElement('span');
+      chip.className = 'col-ref';
+      chip.dataset.col = name;
+      chip.contentEditable = 'false';
+      chip.textContent = displayName(name);
+      chip.title = name;
+      insertNodeAtCaret(chip, true);
+      markDirty();
+      closeBars();
+      editor.focus();
+    }
+    colSearch.addEventListener('input', renderColumnList);
+    colSearch.addEventListener('keydown', (e) => {
+      const items = [...colList.querySelectorAll('.cde-col')];
+      const cur = items.findIndex(b => b.classList.contains('sel'));
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (!items.length) return;
+        const next = (cur + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
+        items.forEach((b, i) => b.classList.toggle('sel', i === next));
+        items[next].scrollIntoView({ block: 'nearest' });
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (items[cur]) insertColumn(items[cur].dataset.col);
+      } else if (e.key === 'Escape') {
+        e.preventDefault(); e.stopPropagation(); closeBars(); restoreRange();
+      }
+    });
+
+    pop.querySelectorAll('.cde-tool').forEach(btn => {
+      // Keep the editor selection when a toolbar button is pressed.
+      btn.addEventListener('mousedown', (e) => e.preventDefault());
+      btn.addEventListener('click', () => {
+        const cmd = btn.dataset.cmd;
+        if (cmd === 'link') { openLinkBar(); return; }
+        if (cmd === 'column') {
+          saveRange();
+          linkBar.classList.add('hidden');
+          const open = columnsBox.classList.toggle('hidden') === false;
+          if (open) { colSearch.value = ''; renderColumnList(); colSearch.focus(); }
+          positionChartInfo();
+          return;
+        }
+        editor.focus();
+        if (cmd === 'mark') {
+          const sel = window.getSelection();
+          const node = sel.anchorNode && (sel.anchorNode.nodeType === 1 ? sel.anchorNode : sel.anchorNode.parentElement);
+          const mark = node && editor.contains(node) ? node.closest('mark') : null;
+          if (mark) {
+            mark.replaceWith(...mark.childNodes);
+          } else if (!sel.isCollapsed && editor.contains(sel.anchorNode)) {
+            const range = sel.getRangeAt(0);
+            const wrapper = document.createElement('mark');
+            wrapper.appendChild(range.extractContents());
+            range.insertNode(wrapper);
+            sel.removeAllRanges();
+            const r = document.createRange();
+            r.selectNodeContents(wrapper);
+            sel.addRange(r);
+          }
+        } else {
+          document.execCommand(cmd, false, null);
+        }
+        markDirty();
+        updateToolState();
+      });
+    });
+    pop.querySelector('.cde-caption').addEventListener('change', markDirty);
+    pop.querySelector('.cde-cancel').addEventListener('click', cancelChartDescriptionEdit);
+    pop.querySelector('.cde-save').addEventListener('click', saveDescription);
+
+    async function saveDescription() {
+      const clone = editor.cloneNode(true);
+      clone.querySelectorAll('[contenteditable]').forEach(el => el.removeAttribute('contenteditable'));
+      const root = sanitizeDescriptionHtml(clone.innerHTML);
+      // Tidy what the browser produced: lists out of paragraphs, no empty paragraphs.
+      root.querySelectorAll('p, div').forEach(block => {
+        if (block.querySelector('ul, ol, p, div')) block.replaceWith(...block.childNodes);
+      });
+      root.querySelectorAll('p, div, li').forEach(block => {
+        if (!block.textContent.replace(/\u00a0/g, ' ').trim() && !block.querySelector('span.col-ref')) block.remove();
+      });
+      root.querySelectorAll('ul, ol').forEach(list => { if (!list.children.length) list.remove(); });
+      const html = root.innerHTML;
+      const showCaption = pop.querySelector('.cde-caption').checked;
+      const saveBtn = pop.querySelector('.cde-save');
+      const errorEl = pop.querySelector('.cde-error');
+      saveBtn.disabled = true;
+      errorEl.classList.add('hidden');
+      try {
+        await saveChartDescription(idx, descriptionIsEmpty(html) ? '' : html, showCaption);
+        chartInfo.dirty = false;
+        renderChartInfoRead();
+        if (chartInfo) chartInfo.button.focus();
+      } catch (err) {
+        errorEl.textContent = t('chart_description_save_error', { error: errorDetail(err) });
+        errorEl.classList.remove('hidden');
+        saveBtn.disabled = false;
+        positionChartInfo();
+      }
+    }
+
+    positionChartInfo();
+    editor.focus();
+    // Caret at the end of the existing text.
+    const range = document.createRange();
+    range.selectNodeContents(editor);
+    range.collapse(false);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
+
+  async function cancelChartDescriptionEdit() {
+    if (!chartInfo) return;
+    if (chartInfo.dirty) {
+      const discard = await confirmDialog({
+        title: t('chart_description_discard_title'),
+        message: t('chart_description_discard_message'),
+        confirmLabel: t('chart_description_discard_button'),
+      });
+      if (!discard || !chartInfo) return;
+    }
+    renderChartInfoRead();
+  }
+
+  async function saveChartDescription(idx, html, showCaption) {
+    const dash = state.currentDashboard;
+    const chart = dash.charts[idx];
+    if (!chart) return;
+    if (dash.id && chart.id) {
+      const saved = await api('PUT', `/${dash.id}/charts/${chart.id}/description`, { description: html, show_caption: showCaption });
+      Object.assign(chart, saved);
+    } else {
+      // Not saved yet: kept with the dashboard and stored on its next save.
+      Object.assign(chart, {
+        description: html,
+        show_caption: showCaption,
+        description_updated_by: currentUserEmail(),
+        description_updated_at: new Date().toISOString(),
+      });
+    }
+    updateChartCardDescription(idx);
+  }
+
+  // Refresh the title area of one chart card without redrawing the chart.
+  function updateChartCardDescription(idx) {
+    const card = document.querySelector(`#chart-list .chart-card[data-idx="${idx}"]`);
+    const chart = state.currentDashboard.charts[idx];
+    if (!card || !chart) return;
+    const info = card.querySelector('.chart-info');
+    if (info) info.classList.toggle('has-description', chartHasDescription(chart));
+    let caption = card.querySelector('.chart-caption');
+    const text = chart.show_caption ? descriptionCaption(chart.description) : '';
+    if (text) {
+      if (!caption) {
+        caption = document.createElement('p');
+        caption.className = 'chart-caption';
+        card.querySelector('h4').after(caption);
+      }
+      caption.textContent = text;
+      caption.title = text;
+    } else if (caption) {
+      caption.remove();
+    }
+  }
+
   async function removeChart(idx) {
     const dash = state.currentDashboard;
     const chart = (dash.charts || [])[idx];
@@ -3147,6 +4005,7 @@
       message: t('confirm_delete_chart_message', { name: chart.title || t('confirm_untitled') }),
     });
     if (!confirmed) return;
+    closeChartInfo();
     const expanded = expandedChartIndex();
     dash.charts.splice(idx, 1);
     // Keep the enlarged chart pointing at the same chart after the removal.
@@ -3196,13 +4055,24 @@
       if (expanded !== null && expanded !== idx) return;
       const card = document.createElement('div');
       card.className = 'chart-card' + (expanded === idx ? ' expanded' : '');
+      card.dataset.idx = idx;
       const title = document.createElement('h4');
       const sizeButton = expanded === idx
         ? `<button id="close-expanded-chart" class="card-icon-btn" type="button" title="${esc(t('chart_collapse_title'))}" aria-label="${esc(t('chart_collapse_title'))}">${ICONS.collapse}</button>`
         : `<button data-idx="${idx}" class="card-icon-btn expand-chart" type="button" title="${esc(t('chart_expand_title'))}" aria-label="${esc(t('chart_expand_title'))}">${ICONS.expand}</button>`;
+      const hasDescription = chartHasDescription(chart);
+      const infoButton = `<button data-idx="${idx}" class="card-icon-btn chart-info${hasDescription ? ' has-description' : ''}" type="button" aria-haspopup="dialog" aria-expanded="false" title="${esc(t('chart_info_title'))}" aria-label="${esc(t('chart_info_title'))}">${ICONS.info}</button>`;
       title.innerHTML = `<span class="chart-title">${esc(chart.title)}</span>
-        <span class="card-actions">${sizeButton}<button data-idx="${idx}" class="card-icon-btn danger remove-chart" type="button" title="${esc(t('chart_remove_title'))}" aria-label="${esc(t('chart_remove_title'))}">${ICONS.remove}</button></span>`;
+        <span class="card-actions">${infoButton}${sizeButton}<button data-idx="${idx}" class="card-icon-btn danger remove-chart" type="button" title="${esc(t('chart_remove_title'))}" aria-label="${esc(t('chart_remove_title'))}">${ICONS.remove}</button></span>`;
       card.appendChild(title);
+      const captionText = chart.show_caption ? descriptionCaption(chart.description) : '';
+      if (captionText) {
+        const caption = document.createElement('p');
+        caption.className = 'chart-caption';
+        caption.textContent = captionText;
+        caption.title = captionText;
+        card.appendChild(caption);
+      }
       const chartArea = document.createElement('div');
       chartArea.className = 'chart-area';
       const canvas = document.createElement('canvas');
@@ -3253,6 +4123,22 @@
     });
     const closeBtn = $('#close-expanded-chart');
     if (closeBtn) closeBtn.addEventListener('click', () => setExpandedChart(null));
+    list.querySelectorAll('.chart-info').forEach(btn => {
+      btn.addEventListener('click', () => openChartInfo(parseInt(btn.dataset.idx, 10), btn));
+    });
+    // Charts are redrawn when data arrives; keep an open description attached
+    // to the new card (an editor in progress must not be lost).
+    if (chartInfo) {
+      const btn = list.querySelector(`.chart-info[data-idx="${chartInfo.idx}"]`);
+      if (btn) {
+        chartInfo.button = btn;
+        btn.classList.add('active');
+        btn.setAttribute('aria-expanded', 'true');
+        positionChartInfo();
+      } else if (!chartInfo.editing) {
+        closeChartInfo();
+      }
+    }
   }
 
   // ------------------------------------------------------------------

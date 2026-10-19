@@ -2223,5 +2223,14 @@
     }
   }
 
+  // Used by the dashboard ("Open view in View modeling" in a chart description).
+  window.ViewModeling = {
+    openView(viewId, access) {
+      if (!viewId) return;
+      if (access === 'shared') openReadonlyView(viewId);
+      else loadViewForEdit(viewId);
+    },
+  };
+
   init();
 })();
