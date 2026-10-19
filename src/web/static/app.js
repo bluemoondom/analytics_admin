@@ -850,6 +850,9 @@
         const palette = scheme.slice(0, 6).map(c => `<span class="palette-swatch" style="background:${esc(c)}"></span>`).join('');
         option.innerHTML = `<span class="palette-swatch-list">${palette}</span><span class="option-label">${esc(label)}</span>`;
         option.addEventListener('click', (e) => {
+          // The list sits inside a <label>: without preventDefault the browser
+          // forwards the click to the trigger button and reopens the list.
+          e.preventDefault();
           e.stopPropagation();
           hidden.value = value;
           state.currentDashboard.color_scheme = value;
@@ -1060,6 +1063,9 @@
         const swatch = `<span class="theme-swatch" style="background:${esc(swatches[value] || '#f3f4f6')}"></span>`;
         option.innerHTML = `${swatch}<span class="option-label">${esc(label)}</span>`;
         option.addEventListener('click', (e) => {
+          // The list sits inside a <label>: without preventDefault the browser
+          // forwards the click to the trigger button and reopens the list.
+          e.preventDefault();
           e.stopPropagation();
           hidden.value = value;
           state.currentDashboard.table_theme = value;
