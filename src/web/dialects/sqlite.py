@@ -90,8 +90,12 @@ class SQLiteDialect(SourceDialect):
     def type_family(self, raw_type_code, sample):
         from src.web.db import _is_integer_sql_type, _is_text_sql_type
 
-        if _is_integer_sql_type(raw_type_code) or isinstance(sample, (int, float, decimal.Decimal)) and not isinstance(sample, bool):
-            return "number", True, False
+        is_number = isinstance(sample, (int, float, decimal.Decimal)) and not isinstance(sample, bool)
+        if _is_integer_sql_type(raw_type_code) or is_number:
+            # Only whole-number values make an integer column; REAL/NUMERIC
+            # columns keep their decimal places in the table.
+            is_integer = _is_integer_sql_type(raw_type_code) or (isinstance(sample, int) and not isinstance(sample, bool))
+            return "number", is_integer, False
         if isinstance(sample, (datetime.datetime, datetime.date, datetime.time)):
             return "date", False, False
         family = "text"

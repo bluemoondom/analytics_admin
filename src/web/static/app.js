@@ -4778,10 +4778,24 @@
     return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 > 0.6;
   }
 
+  // Fixed formats with thousands separated by a space and a decimal comma
+  // (1 000 000,00), the same in every browser language. The separator is a
+  // non-breaking space, which Czech Excel also reads as a thousands separator.
+  const SPACE_COMMA_FORMATS = { '# ##0,00': 2, '# ##0': 0 };
+
+  function formatSpaceComma(num, decimals) {
+    const fixed = Math.abs(num).toFixed(decimals);
+    const [intPart, fraction] = fixed.split('.');
+    const grouped = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, '\u00a0');
+    const sign = num < 0 && Number(fixed) !== 0 ? '-' : '';
+    return sign + grouped + (fraction ? ',' + fraction : '');
+  }
+
   function formatNumber(value, format, isInteger = false) {
     if (value === null || value === undefined || isNaN(value)) return value;
     const floatVal = parseFloat(value);
     if (isNaN(floatVal)) return value;
+    if (format in SPACE_COMMA_FORMATS) return formatSpaceComma(floatVal, isInteger ? 0 : SPACE_COMMA_FORMATS[format]);
     if (format === '#,##0' || isInteger) return Math.round(floatVal).toLocaleString();
     if (format === '#,##0.00') return floatVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     if (format === '#,##0.0000') return floatVal.toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 4 });

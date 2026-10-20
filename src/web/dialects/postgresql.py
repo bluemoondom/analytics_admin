@@ -79,8 +79,11 @@ class PostgreSQLDialect(SourceDialect):
 
         if isinstance(sample, bool):
             return "text", False, False
-        if isinstance(sample, (int, float)):
-            return "number", True, False
+        import decimal
+
+        if isinstance(sample, (int, float, decimal.Decimal)):
+            # Only whole-number values make an integer column (NUMERIC/REAL keep decimals).
+            return "number", isinstance(sample, int), False
         if isinstance(sample, (datetime.datetime, datetime.date, datetime.time)):
             return "date", False, False
         from src.web.db import _is_text_sql_type

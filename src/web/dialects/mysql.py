@@ -80,9 +80,12 @@ class MySQLDialect(SourceDialect):
 
         # pymysql/mysqlclient deliver Python types in the description code
         # column for many drivers; fall back to the sample value.
-        if isinstance(sample, (int, float)) and not isinstance(sample, bool):
-            return "number", True, False
         import datetime
+        import decimal
+
+        if isinstance(sample, (int, float, decimal.Decimal)) and not isinstance(sample, bool):
+            # Only whole-number values make an integer column (DECIMAL/FLOAT keep decimals).
+            return "number", isinstance(sample, int), False
 
         if isinstance(sample, (datetime.datetime, datetime.date, datetime.time)):
             return "date", False, False
