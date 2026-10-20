@@ -199,14 +199,12 @@ Chart.js and jsPDF are served from `src/web/static/vendor` (see the README there
 
 ![Sales dashboard: KPI cards, bar + line combination, stacked bar, doughnut and multi-line chart](img/screen9.jpg)
 
-![Combined chart: revenue as bars and plan as a line, expanded](img/screen10.jpg)
+![Chart types: grouped bar, 100 % stacked bar, horizontal bar, stacked area, pie and funnel](img/screen10.jpg)
 
-![Chart types: grouped bar, 100 % stacked bar, horizontal bar, stacked area, pie and funnel](img/screen11.jpg)
+![Chart settings: one series rendered as bars, another as a line](img/screen11.jpg)
 
-![Chart settings: one series rendered as bars, another as a line](img/screen12.jpg)
+![Chart description with the automatic "Where the data comes from" section](img/screen12.jpg)
 
-![Chart description with the automatic "Where the data comes from" section](img/screen13.jpg)
-
-![Editing a chart description: formatting, links, highlight and column references](img/screen14.jpg)
+![Editing a chart description: formatting, links, highlight and column references](img/screen13.jpg)
 
 ---
