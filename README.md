@@ -205,6 +205,5 @@ Chart.js and jsPDF are served from `src/web/static/vendor` (see the README there
 
 ![Chart description with the automatic "Where the data comes from" section](img/screen12.jpg)
 
-![Editing a chart description: formatting, links, highlight and column references](img/screen13.jpg)
 
 ---
