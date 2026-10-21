@@ -1,4 +1,4 @@
-# Business Intelligence Analytics Admin — v0.1.5
+# Business Intelligence Analytics Admin — Features
 ## You can create a chart or pivot table faster than it takes to type it into AI
 
 ## Overview
@@ -14,6 +14,7 @@ Analytics Admin is a multi-user business intelligence platform that allows organ
 - Conditional formatting of numeric values: positive values shown in green, negative values shown in red
 - Support for numeric and date/time formatting
 - Configurable row limits
+- Wide tables stay easy to read: the table scrolls inside a window-high box with a sticky header row, the first column is frozen, the row under the mouse is highlighted, and a navigation strip above the table (column arrows, a top scrollbar and the visible column range) or the arrow keys move sideways by whole columns without leaving the current row
 - Automatic detection of data types to generate appropriate filtering conditions for a view
 - Column order defined in the dashboard settings (**Columns** list, up/down arrows or drag and drop) is applied to the table and saved with the dashboard
 - The **View/Table** picker refreshes automatically whenever a view is saved, deleted or shared, without reloading the page
@@ -49,6 +50,11 @@ Analytics Admin is a multi-user business intelligence platform that allows organ
 The view modeling layer allows users to define reusable data structures on top of source tables and views.
 
 - Modeling based on tables and views, with support for subviews
+- Saved views are stored in the application's internal database, next to users, connectors and dashboards, for every database engine (SQL Server, MySQL, MariaDB, PostgreSQL, SQLite). Dashboards read the saved SQL from there; nothing is created in the source database, so a read-only database user is enough, and reports keep working (and can still be shared) after the source database moves to another server
+- On Helios databases (the table `dbo.TabObecnyPrehled` exists) each view is also written to `TabObecnyPrehled`, so it can be browsed in Helios: `NazevSys` = `hvw_<name>`, `Nazev` = the view description (or `hvw_<name>` when empty), `DefView` = the definition without ORDER BY, the column definition `DefAttrs`, `Autor`, `DatPorizeni` and `Cislo` (next free number below 10000). The row is updated when the view changes and deleted with it; rows that belong to someone else are never overwritten (saving under such a name is refused)
+- If the database user cannot write to `TabObecnyPrehled`, the view is still saved in the application and dashboards work; the user sees a warning
+- Views saved by earlier versions into Helios `TabObecnyPrehled` are imported automatically the first time a connector is used. If the database user cannot read the table, the import is retried after the next restart
+- Reopening a saved view restores exactly the modeled column selection, joins, conditions and custom columns
 - Selection of the source connector for each view
 - One-click exposure of a view as an API endpoint
 - API access supports GET requests in both tabular and tree (hierarchical) structures, as well as PUT requests
@@ -71,11 +77,11 @@ Views can be shared with other users and connectors, including connectors pointi
 - Only the author of a view (the owner of the connector it was saved through) can share it
 - Sharing uses the recipient connector's **share code**: the recipient copies it from the connector details and sends it to the author; the author verifies who the code belongs to before sending the invitation
 - The recipient sees pending invitations in **View modeling** (with a badge in the menu), previews the view (tables, columns and SQL) and accepts or declines it
-- **Same database**: the recipient gets access to the author's view; no copy is created. The database is recognised by looking up the author's view through the recipient's connector, regardless of how the server name is written
-- **Different database**: the view is rebuilt and test-run in the recipient's database first; missing tables, columns or permissions are reported and nothing is written. On success a read-only copy is stored in the recipient's `TabObecnyPrehled`
+- **Same database**: the recipient gets access to the author's view; no copy is created. The database is recognised from the connector settings (engine, server, port and database name)
+- **Different database**: the view is rebuilt and test-run in the recipient's database first; missing tables, columns or permissions are reported and nothing is written. On success a read-only copy is stored for the recipient's connector
 - Shared views are read-only for recipients: they cannot be edited, deleted, overwritten by saving under the same name, or shared further
 - When the author saves a new version, recipients in the same database see it immediately; recipients with a copy are offered the update and can accept it or keep the current version
-- The author sees the status of every share (waiting, accepted, error) and can revoke it; recipients can remove a shared view from their list. In both cases the view is only hidden, copies are not deleted from the recipient's database
+- The author sees the status of every share (waiting, accepted, error) and can revoke it; recipients can remove a shared view from their list. In both cases the view is only hidden, copies are kept
 - Shared views appear in the recipient's dashboards and can be exposed through the recipient's own public API (read-only, see Security)
 
 ---
@@ -87,6 +93,7 @@ Views can be shared with other users and connectors, including connectors pointi
 - API authentication via bearer key, with a configurable custom header name
 - API tenant identifier for connector-level access control
 - Configurable maximum request rate (requests per minute)
+- **Only views from Analytics admin**: when checked, dashboards offer only the views saved in Analytics Admin; otherwise the tables and views of the database are offered as well
 - Unique share code (UUID) per connector for receiving shared views, with copy-to-clipboard and regeneration; a new code invalidates the old one while shares already accepted remain
 
 ---
@@ -133,10 +140,11 @@ Views can be shared with other users and connectors, including connectors pointi
 The application is started with the following command:
 
 ```
+pip install BI-analytics-admin
 python -m src.web.server
 ```
 
-Database changes are applied automatically on startup. The metadata database gets the `view_shares` table and a `share_uuid` column on `connectors` (existing connectors receive a code automatically), the `expanded_chart` column on `dashboards` and the `description`, `show_caption`, `description_updated_by` and `description_updated_at` columns on `dashboard_charts`, so the database user needs permission to create and alter tables.
+Database changes are applied automatically on startup. The metadata database gets the `view_shares` table and a `share_uuid` column on `connectors` (existing connectors receive a code automatically), the `saved_views` and `saved_view_imports` tables (saved view definitions), the `expanded_chart` column on `dashboards` and the `description`, `show_caption`, `description_updated_by` and `description_updated_at` columns on `dashboard_charts`, so the database user needs permission to create and alter tables.
 
 Chart.js and jsPDF are served from `src/web/static/vendor` (see the README there); no external CDN is needed.
 
