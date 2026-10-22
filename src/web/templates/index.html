@@ -1,12 +1,26 @@
 {% extends "base.html" %}
 {% block body %}
 <main class="layout">
-  <aside class="sidebar sidebar-modern">
+  <!-- Narrow screens: top bar with the menu button; the sidebar becomes a drawer. -->
+  <header class="mobile-topbar" id="mobile-topbar">
+    <button id="sidebar-toggle" class="topbar-btn" type="button" aria-controls="app-sidebar" aria-expanded="false" data-i18n="sidebar_open_title" data-i18n-attr="aria-label" aria-label="Otevřít menu">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+    </button>
+    <span class="app-logo-mark topbar-logo"><img src="/static/icons/bar.svg" alt="" /></span>
+    <span class="topbar-title" id="topbar-title">{{ title }}</span>
+  </header>
+  <div class="shell-backdrop" id="shell-backdrop" aria-hidden="true"></div>
+
+  <aside class="sidebar sidebar-modern" id="app-sidebar">
     <div class="app-header">
       <div class="app-logo">
         <span class="app-logo-mark"><img src="/static/icons/bar.svg" alt="" /></span>
         <h1>{{ title }}</h1>
       </div>
+      <button id="sidebar-collapse" class="sidebar-collapse" type="button" aria-controls="app-sidebar" aria-expanded="true" data-i18n="sidebar_collapse_title" data-i18n-attr="title" title="Sbalit menu">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M9.5 4.5v15"/><path d="m16 10-2 2 2 2"/></svg>
+        <span class="sr-only" data-i18n="sidebar_collapse_title">Sbalit menu</span>
+      </button>
     </div>
 
     <nav class="top-menu side-nav" data-i18n="sidebar_main_menu_label" data-i18n-attr="aria-label" aria-label="Hlavní menu">
@@ -698,60 +712,66 @@
             <span class="hint" data-i18n="connector_share_code_hint">Pošlete tento kód autorovi view. Podle něj vám může view nasdílet na tento konektor.</span>
           </div>
         </div>
-        <div class="form-row compact">
-          <label><span data-i18n="connector_db_type_label">Typ databáze</span>
-            <select id="connector-db-type">
-              <option value="mssql" data-i18n="connector_db_type_mssql">Microsoft SQL Server</option>
-              <option value="mysql" data-i18n="connector_db_type_mysql">MySQL / MariaDB</option>
-              <option value="postgresql" data-i18n="connector_db_type_postgresql">PostgreSQL</option>
-              <option value="sqlite" data-i18n="connector_db_type_sqlite">SQLite (soubor)</option>
-            </select>
-          </label>
-          <label><span data-i18n="connector_db_host_label">Server</span>
-            <input id="connector-db-host" type="text" />
-          </label>
-          <label><span data-i18n="connector_db_port_label">Port</span>
-            <input id="connector-db-port" type="number" value="1433" />
-          </label>
-          <label><span data-i18n="connector_db_name_label">Databáze</span>
-            <input id="connector-db-name" type="text" />
-          </label>
-          <label><span data-i18n="connector_db_user_label">Uživatel</span>
-            <input id="connector-db-user" type="text" />
-          </label>
-          <label><span data-i18n="connector_db_password_label">Heslo</span>
-            <input id="connector-db-password" type="password" />
-          </label>
-        </div>
-        <div class="form-row compact">
-          <label><span data-i18n="connector_db_driver_label">Driver</span>
-            <input id="connector-db-driver" type="text" value="ODBC Driver 17 for SQL Server" />
-          </label>
-          <label class="checkbox-label" id="connector-analytics-admin-only-wrapper" data-i18n="connector_analytics_admin_only_hint" data-i18n-attr="title">
-            <input id="connector-analytics-admin-only" type="checkbox" />
-            <span data-i18n="connector_analytics_admin_only_label">Pouze view z Analytics admin</span>
-          </label>
-          <label><span data-i18n="connector_api_tenant_label">API tenant</span>
-            <input id="connector-api-tenant" type="text" />
-          </label>
-          <label class="api-key-field"><span data-i18n="connector_api_key_label">API klíč</span>
-            <span class="input-with-button">
-              <input id="connector-api-key" type="text" />
-              <button id="generate-api-key" type="button" class="btn small" data-i18n="generate_api_key_button">Vygenerovat</button>
-            </span>
-          </label>
-          <label><span data-i18n="connector_api_key_header_label">Hlavička</span>
-            <input id="connector-api-key-header" type="text" value="X-API-Key" />
-          </label>
-        </div>
-        <div class="form-row compact">
-          <label class="full-width"><span data-i18n="connector_api_allowed_ips_label">Povolené IP adresy (oddělené čárkou)</span>
-            <input id="connector-api-allowed-ips" type="text" />
-          </label>
-          <label><span data-i18n="connector_api_rate_limit_label">Limit/min (0 = neomezeně)</span>
-            <input id="connector-api-rate-limit" type="number" value="0" />
-          </label>
-        </div>
+        <section class="connector-section">
+          <h3 data-i18n="connector_section_database">Připojení k databázi</h3>
+          <div class="form-row compact">
+            <label><span data-i18n="connector_db_type_label">Typ databáze</span>
+              <select id="connector-db-type">
+                <option value="mssql" data-i18n="connector_db_type_mssql">Microsoft SQL Server</option>
+                <option value="mysql" data-i18n="connector_db_type_mysql">MySQL / MariaDB</option>
+                <option value="postgresql" data-i18n="connector_db_type_postgresql">PostgreSQL</option>
+                <option value="sqlite" data-i18n="connector_db_type_sqlite">SQLite (soubor)</option>
+              </select>
+            </label>
+            <label class="wide"><span data-i18n="connector_db_host_label">Server</span>
+              <input id="connector-db-host" type="text" />
+            </label>
+            <label><span data-i18n="connector_db_port_label">Port</span>
+              <input id="connector-db-port" type="number" value="1433" />
+            </label>
+            <label class="wide"><span data-i18n="connector_db_name_label">Databáze</span>
+              <input id="connector-db-name" type="text" />
+            </label>
+            <label><span data-i18n="connector_db_user_label">Uživatel</span>
+              <input id="connector-db-user" type="text" />
+            </label>
+            <label><span data-i18n="connector_db_password_label">Heslo</span>
+              <input id="connector-db-password" type="password" />
+            </label>
+            <label class="wide"><span data-i18n="connector_db_driver_label">Driver</span>
+              <input id="connector-db-driver" type="text" value="ODBC Driver 17 for SQL Server" />
+            </label>
+          </div>
+          <div class="form-row">
+            <label class="checkbox-label full-width" id="connector-analytics-admin-only-wrapper" data-i18n="connector_analytics_admin_only_hint" data-i18n-attr="title">
+              <input id="connector-analytics-admin-only" type="checkbox" />
+              <span data-i18n="connector_analytics_admin_only_label">Pouze view z Analytics admin</span>
+            </label>
+          </div>
+        </section>
+        <section class="connector-section">
+          <h3 data-i18n="connector_section_api">Veřejné API</h3>
+          <div class="form-row compact">
+            <label><span data-i18n="connector_api_tenant_label">API tenant</span>
+              <input id="connector-api-tenant" type="text" />
+            </label>
+            <label class="api-key-field wide"><span data-i18n="connector_api_key_label">API klíč</span>
+              <span class="input-with-button">
+                <input id="connector-api-key" type="text" />
+                <button id="generate-api-key" type="button" class="btn small" data-i18n="generate_api_key_button">Vygenerovat</button>
+              </span>
+            </label>
+            <label><span data-i18n="connector_api_key_header_label">Hlavička</span>
+              <input id="connector-api-key-header" type="text" value="X-API-Key" />
+            </label>
+            <label class="wide"><span data-i18n="connector_api_allowed_ips_label">Povolené IP adresy (oddělené čárkou)</span>
+              <input id="connector-api-allowed-ips" type="text" />
+            </label>
+            <label><span data-i18n="connector_api_rate_limit_label">Limit/min (0 = neomezeně)</span>
+              <input id="connector-api-rate-limit" type="number" value="0" />
+            </label>
+          </div>
+        </section>
         <div class="form-actions">
           <button id="save-connector" class="btn primary" type="button" data-i18n="save_connector_button">Uložit konektor</button>
           <button id="test-connector" class="btn" type="button" data-i18n="test_connector_button">Ověřit připojení</button>
@@ -875,7 +895,7 @@
 
 {% endblock %}
 {% block scripts %}
-<script src="/static/view-modeling.js"></script>
-<script src="/static/connectors.js"></script>
-<script src="/static/app.js"></script>
+<script src="/static/view-modeling.js?v={{ asset_version }}"></script>
+<script src="/static/connectors.js?v={{ asset_version }}"></script>
+<script src="/static/app.js?v={{ asset_version }}"></script>
 {% endblock %}

@@ -364,7 +364,8 @@ def _filter_where(
     params: list[Any] = []
     where_sql = ""
     where_clauses: list[str] = []
-    text_conditions: list[tuple[str, str, Any]] = []
+    # (column, mode, clause, parameter)
+    text_conditions: list[tuple[str, str, str, Any]] = []
 
     for col, raw in filters.items():
         if col not in all_columns or raw is None or raw == "":
@@ -417,19 +418,19 @@ def _filter_where(
                 like_wildcards = "%" in str_value or "_" in str_value
                 if operator in {"contains", "not_contains"}:
                     op_sql = "LIKE" if operator == "contains" else "NOT LIKE"
-                    text_conditions.append(("not" if operator == "not_contains" else "or", f"{qi(col)} {op_sql} {ph}", f"%{str_value}%"))
+                    text_conditions.append((col, "not" if operator == "not_contains" else "or", f"{qi(col)} {op_sql} {ph}", f"%{str_value}%"))
                 elif like_wildcards:
-                    text_conditions.append(("or", f"{qi(col)} LIKE {ph}", str_value))
+                    text_conditions.append((col, "or", f"{qi(col)} LIKE {ph}", str_value))
                 else:
-                    text_conditions.append(("or", f"{qi(col)} = {ph}", str_value))
+                    text_conditions.append((col, "or", f"{qi(col)} = {ph}", str_value))
 
     # Build WHERE clause. Text filters are grouped by column into two brackets:
     # - positive conditions (=, contains, like_wildcards) are joined with OR
     # - negative conditions (not_contains) are joined with AND
     # each group is parenthesized and the groups for a column are ANDed together.
     text_groups: dict[str, dict[str, list[tuple[str, Any]]]] = {}
-    for mode, clause, param in text_conditions:
-        col_name = clause.split(" ", 1)[0].strip('[]"`')
+    for col_name, mode, clause, param in text_conditions:
+        # Grouped by the column itself: names with spaces must not share a group.
         text_groups.setdefault(col_name, {}).setdefault(mode, []).append((clause, param))
 
     final_clauses: list[str] = []

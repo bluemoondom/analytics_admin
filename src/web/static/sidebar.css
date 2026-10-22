@@ -377,7 +377,7 @@ body.theme-bg-black .sidebar-modern .nav-list li.active { background: var(--sb-a
 }
 
 /* Resizable sidebar: width comes from --sidebar-width set by sidebar.js. */
-@media (min-width: 901px) {
+@media (min-width: 1024px) {
   .layout { grid-template-columns: var(--sidebar-width, 280px) 1fr; }
 }
 .sidebar.sidebar-modern { position: relative; min-width: 0; }
@@ -408,10 +408,4 @@ body.theme-bg-black .sidebar-modern .nav-list li.active { background: var(--sb-a
 .sidebar-resizer:focus-visible { outline: none; }
 body.sidebar-resizing,
 body.sidebar-resizing * { cursor: col-resize !important; user-select: none !important; }
-@media (max-width: 900px) {
-  .sidebar-resizer { display: none; }
-  /* Stacked layout: the sidebar sits above the content with limited height,
-     so it scrolls as a whole instead of squeezing the item list to zero. */
-  .sidebar.sidebar-modern { overflow-y: auto; max-height: 55vh; }
-  .sidebar-modern .sidebar-scroll { flex: 0 0 auto; overflow: visible; }
-}
+/* Narrow screens (drawer) and the collapsed icon rail: see responsive.css. */

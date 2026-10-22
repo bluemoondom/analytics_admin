@@ -554,5 +554,13 @@
   "table_nav_scrollbar": "Tabelle seitlich verschieben",
   "table_nav_info": "Spalten {from}–{to} von {total}",
   "connector_analytics_admin_only_hint": "Als Dashboard-Quellen nur in Analytics admin gespeicherte Views anbieten, ohne Tabellen und Views der Datenbank.",
-  "view_db_warnings": "Hinweis:\n{warnings}\n\nDie View ist in Analytics Admin gespeichert und Dashboards funktionieren damit."
+  "view_db_warnings": "Hinweis:\n{warnings}\n\nDie View ist in Analytics Admin gespeichert und Dashboards funktionieren damit.",
+  "sidebar_open_title": "Menü öffnen",
+  "sidebar_collapse_title": "Menü einklappen",
+  "sidebar_expand_title": "Menü ausklappen",
+  "sidebar_close_title": "Menü schließen",
+  "connector_section_database": "Datenbankverbindung",
+  "connector_section_api": "Öffentliche API",
+  "cell_copied_toast": "Kopiert: {value}",
+  "cell_copy_failed_toast": "Der Wert konnte nicht kopiert werden"
 }

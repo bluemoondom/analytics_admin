@@ -1788,7 +1788,7 @@ body.theme-bg-black .rp-accordion-header:hover { background: #374151; }
   letter-spacing: 0.03em;
 }
 .data-table tbody tr.data-row:nth-child(even) { background: #f9fafb; }
-.data-table td { cursor: pointer; position: relative; }
+.data-table td { cursor: copy; position: relative; }
 .data-table td .drill-toggle {
   background: none;
   border: none;
@@ -2721,11 +2721,7 @@ body.theme-bg-black .rp-accordion-header:hover { background: #374151; }
 .sql-preview .cmt { color: #9ca3af; font-style: italic; }
 .sql-preview .id { color: #e5e7eb; }
 
-@media (max-width: 900px) {
-  .layout { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
-  .sidebar { border-right: none; border-bottom: 1px solid var(--border); max-height: 300px; }
-  .right-panel { width: 100%; max-width: 100vw; }
-}
+
 
 /* Login page */
 .login-page {
@@ -3340,3 +3336,35 @@ body.theme-bg-black .table-nav-track { scrollbar-color: #6366f1 #1f2937; }
 body.theme-bg-black .table-nav-track::-webkit-scrollbar-track { background: #1f2937; }
 body.theme-bg-black .table-nav-track::-webkit-scrollbar-thumb { background: #6366f1; }
 body.theme-bg-black .data-table tbody tr:hover > td { box-shadow: inset 0 0 0 9999px rgba(165, 180, 252, 0.1); }
+
+/* Table cell copied to the clipboard (click on a cell) */
+.copy-toast {
+  position: fixed;
+  z-index: 200;
+  max-width: min(360px, calc(100vw - 16px));
+  padding: 0.35rem 0.65rem;
+  border-radius: 8px;
+  background: #1f2937;
+  color: #fff;
+  font-size: 0.8rem;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: 0 6px 18px rgba(17, 24, 39, 0.25);
+  opacity: 0;
+  transform: translateY(4px);
+  pointer-events: none;
+  transition: opacity 0.15s, transform 0.15s;
+}
+.copy-toast.show { opacity: 1; transform: none; }
+.data-table td.cell-copied { animation: cell-copied-flash 1s ease-out; }
+@keyframes cell-copied-flash {
+  0% { box-shadow: inset 0 0 0 2px var(--primary); background-color: var(--primary-light); }
+  100% { box-shadow: inset 0 0 0 2px transparent; }
+}
+body.theme-bg-black .copy-toast { background: #e5e7eb; color: #111827; }
+@media (prefers-reduced-motion: reduce) {
+  .copy-toast { transition: none; }
+  .data-table td.cell-copied { animation: none; outline: 2px solid var(--primary); outline-offset: -2px; }
+}

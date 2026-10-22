@@ -5,20 +5,21 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="icon" type="image/x-icon" href="static/favicon.ico">
   <title>{{ title }}</title>
-  <link rel="stylesheet" href="/static/app.css">
-  <link rel="stylesheet" href="/static/user-menu.css">
-  <link rel="stylesheet" href="/static/sidebar.css">
+  <link rel="stylesheet" href="/static/app.css?v={{ asset_version }}">
+  <link rel="stylesheet" href="/static/user-menu.css?v={{ asset_version }}">
+  <link rel="stylesheet" href="/static/sidebar.css?v={{ asset_version }}">
+  <link rel="stylesheet" href="/static/responsive.css?v={{ asset_version }}">
 </head>
 <body>
   {% block body %}{% endblock %}
 
   <!-- Loaded first so the remembered sidebar width applies before the larger libraries. -->
-  <script src="/static/sidebar.js"></script>
+  <script src="/static/sidebar.js?v={{ asset_version }}"></script>
 
   <!-- Bundled locally (see static/vendor/README.md) so the app works without internet access. -->
-  <script src="/static/vendor/chart.umd.min.js"></script>
-  <script src="/static/vendor/jspdf.umd.min.js"></script>
-  <script src="/static/i18n.js"></script>
+  <script src="/static/vendor/chart.umd.min.js?v={{ asset_version }}"></script>
+  <script src="/static/vendor/jspdf.umd.min.js?v={{ asset_version }}"></script>
+  <script src="/static/i18n.js?v={{ asset_version }}"></script>
   {% block scripts %}{% endblock %}
 </body>
 </html>

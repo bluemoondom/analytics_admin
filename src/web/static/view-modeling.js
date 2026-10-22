@@ -412,6 +412,15 @@
           <span class="view-list-actions">${actions}</span>
         </li>`;
       }).join('');
+      // The whole row opens the view, like a dashboard row (also on touch screens).
+      list.querySelectorAll('li[data-id]').forEach(li => {
+        li.addEventListener('click', () => {
+          const id = parseInt(li.dataset.id);
+          if (!id) return;
+          if (li.classList.contains('is-shared')) openReadonlyView(id);
+          else loadViewForEdit(id);
+        });
+      });
       list.querySelectorAll('.edit-view').forEach(btn => {
         btn.addEventListener('click', (e) => {
           e.stopPropagation();

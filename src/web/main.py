@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import os
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, Request
@@ -41,6 +43,24 @@ def _setup_middleware(app: FastAPI, settings) -> None:
     )
 
 
+def _asset_version(directory: str) -> str:
+    """Short fingerprint of the static files.
+
+    Appended to script and stylesheet URLs (``?v=...``) so browsers load the
+    new files right after an update instead of a cached copy.
+    """
+    digest = hashlib.sha1()
+    for root, _dirs, files in sorted(os.walk(directory)):
+        for name in sorted(files):
+            path = os.path.join(root, name)
+            try:
+                stat = os.stat(path)
+            except OSError:
+                continue
+            digest.update(f"{os.path.relpath(path, directory)}:{stat.st_size}:{stat.st_mtime_ns}".encode())
+    return digest.hexdigest()[:10]
+
+
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""
     settings = get_settings()
@@ -48,6 +68,7 @@ def create_app() -> FastAPI:
 
     app.mount("/static", StaticFiles(directory="src/web/static"), name="static")
     templates = Jinja2Templates(directory="src/web/templates")
+    templates.env.globals["asset_version"] = _asset_version("src/web/static")
 
     run_migrations()
     _setup_middleware(app, settings)
@@ -64,11 +85,14 @@ def create_app() -> FastAPI:
         """Render the dashboard administration page or redirect to login."""
         if user is None:
             return RedirectResponse(url="/login", status_code=302)
-        return templates.TemplateResponse(
+        response = templates.TemplateResponse(
             request,
             "index.html",
             {"title": settings.APP_TITLE, "user": user},
         )
+        # Always revalidate the page, so it refers to the current asset versions.
+        response.headers["Cache-Control"] = "no-cache"
+        return response
 
     @app.get("/login", response_class=HTMLResponse)
     def login_page(request: Request, user: Annotated[User | None, Depends(get_current_user_optional)]):

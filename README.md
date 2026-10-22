@@ -16,6 +16,8 @@ Analytics Admin is a multi-user business intelligence platform that allows organ
 - Configurable row limits
 - Wide tables stay easy to read: the table scrolls inside a window-high box with a sticky header row, the first column is frozen, the row under the mouse is highlighted, and a navigation strip above the table (column arrows, a top scrollbar and the visible column range) or the arrow keys move sideways by whole columns without leaving the current row
 - Automatic detection of data types to generate appropriate filtering conditions for a view
+- A text column can have several conditions (equals, contains, does not contain); positive conditions of one column are joined with OR, "does not contain" with AND, and all of them are saved with the dashboard and restored when it is opened again
+- Clicking a table cell copies its displayed value to the clipboard (a short confirmation appears next to the cell); it does not change the filters
 - Column order defined in the dashboard settings (**Columns** list, up/down arrows or drag and drop) is applied to the table and saved with the dashboard
 - The **View/Table** picker refreshes automatically whenever a view is saved, deleted or shared, without reloading the page
 
@@ -131,6 +133,13 @@ Views can be shared with other users and connectors, including connectors pointi
 - Language, background theme and account menu grouped at the bottom of the sidebar
 - Resizable sidebar: drag its right edge (or use the arrow keys); the width is remembered per browser and a double-click restores the default
 - Row actions (Edit, Share, View) appear on hover so item names use the full width
+- Responsive layout for desktops, tablets and phones:
+  - on wide screens the sidebar can be collapsed to an icon rail (remembered per browser), giving dashboards more room
+  - below 1024 px the sidebar becomes a drawer opened from a top bar, and the dashboard settings panel opens as a sheet over the page; both close with the backdrop or Escape
+  - charts per row is a maximum: narrower screens show fewer charts per row, down to one on phones; KPI cards, toolbars and forms rearrange as well
+  - wide tables keep their horizontal scrolling with the column navigation
+  - View modeling blocks stack on narrower screens; connector settings are grouped into Database connection and Public API
+- Clicking a row in the list of views or connectors opens it, like a dashboard row
 - Dark background theme support for all sidebar and sharing dialogs
 
 ---
@@ -212,6 +221,12 @@ Chart.js and jsPDF are served from `src/web/static/vendor` (see the README there
 ![Chart settings: one series rendered as bars, another as a line](img/screen11.jpg)
 
 ![Chart description with the automatic "Where the data comes from" section](img/screen12.jpg)
+
+![Desktop: the sidebar collapsed to an icon rail leaves more room for the dashboard](img/screen13.jpg)
+
+![Phone: dashboard, sidebar as a drawer, dashboard settings as a sheet and a wide table with column navigation](img/screen14.jpg)
+
+![Tablet: dashboard with two charts per row and View modeling with stacked blocks](img/screen15.jpg)
 
 
 ---

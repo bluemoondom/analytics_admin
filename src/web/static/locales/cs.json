@@ -554,5 +554,13 @@
   "table_nav_scrollbar": "Posun tabulky do stran",
   "table_nav_info": "Sloupce {from}–{to} z {total}",
   "connector_analytics_admin_only_hint": "V dashboardech nabízet jen views uložená v Analytics admin, bez tabulek a views přímo z databáze.",
-  "view_db_warnings": "Upozornění:\n{warnings}\n\nV Analytics Admin je view uložené a dashboardy s ním fungují."
+  "view_db_warnings": "Upozornění:\n{warnings}\n\nV Analytics Admin je view uložené a dashboardy s ním fungují.",
+  "sidebar_open_title": "Otevřít menu",
+  "sidebar_collapse_title": "Sbalit menu",
+  "sidebar_expand_title": "Rozbalit menu",
+  "sidebar_close_title": "Zavřít menu",
+  "connector_section_database": "Připojení k databázi",
+  "connector_section_api": "Veřejné API",
+  "cell_copied_toast": "Zkopírováno: {value}",
+  "cell_copy_failed_toast": "Hodnotu se nepodařilo zkopírovat"
 }

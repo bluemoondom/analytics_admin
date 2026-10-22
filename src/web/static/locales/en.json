@@ -554,5 +554,13 @@
   "table_nav_scrollbar": "Scroll the table sideways",
   "table_nav_info": "Columns {from}–{to} of {total}",
   "connector_analytics_admin_only_hint": "Offer only views saved in Analytics admin as dashboard sources, without the tables and views of the database.",
-  "view_db_warnings": "Warning:\n{warnings}\n\nThe view is saved in Analytics Admin and dashboards work with it."
+  "view_db_warnings": "Warning:\n{warnings}\n\nThe view is saved in Analytics Admin and dashboards work with it.",
+  "sidebar_open_title": "Open menu",
+  "sidebar_collapse_title": "Collapse menu",
+  "sidebar_expand_title": "Expand menu",
+  "sidebar_close_title": "Close menu",
+  "connector_section_database": "Database connection",
+  "connector_section_api": "Public API",
+  "cell_copied_toast": "Copied: {value}",
+  "cell_copy_failed_toast": "Could not copy the value"
 }

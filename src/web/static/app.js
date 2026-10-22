@@ -1418,7 +1418,17 @@
     $('#builder').classList.remove('hidden');
     $('#delete-dashboard').classList.remove('hidden');
     $('#dashboard-name').value = dash.name;
-    $('#view-select').value = dash.view_name;
+    const viewSelect = $('#view-select');
+    if (dash.view_name && ![...viewSelect.options].some(o => o.value === dash.view_name)) {
+      // The view list may still be loading (or no longer lists the view): keep the
+      // dashboard's view instead of treating it as a switch to "no view", which
+      // would drop its filters and charts.
+      const opt = document.createElement('option');
+      opt.value = dash.view_name;
+      opt.textContent = dash.view_display_name || dash.view_name;
+      viewSelect.appendChild(opt);
+    }
+    viewSelect.value = dash.view_name;
     migrateLegacyDrillDown();
     await onViewChange(false);
     applyStoredFilters(dash.filters);
@@ -2060,7 +2070,13 @@
       inp.addEventListener('input', debounce(refreshData, 300));
     });
     container.querySelectorAll('.add-text-filter').forEach(btn => {
-      btn.addEventListener('click', () => addTextFilterRow(btn.dataset.col));
+      btn.addEventListener('click', () => {
+        // A new condition starts with the operator of the previous one ("contains" by default).
+        const rows = $$(`#filter-bar .text-filter-rows[data-col="${esc(btn.dataset.col)}"] .text-filter-op`);
+        const last = rows[rows.length - 1];
+        const row = addTextFilterRow(btn.dataset.col, { operator: last ? last.value : 'contains' });
+        if (row) row.querySelector('.text-filter-value').focus();
+      });
     });
     state.columns.filter(c => c.type === 'text').forEach(c => addTextFilterRow(c.name, { operator: 'contains' }));
   }
@@ -2087,6 +2103,7 @@
       el.addEventListener('input', debounce(refreshData, 300));
     });
     rowsContainer.appendChild(row);
+    return row;
   }
 
   function applyStoredFilters(filters) {
@@ -2104,18 +2121,13 @@
         if (from) from.value = f.from_value || '';
         if (to) to.value = f.to_value || '';
       } else {
-        const container = $(`#filter-bar .text-filter-rows[data-col="${esc(f.column)}"]`);
-        if (!container) return;
-        if (!container.children.length) {
-          addTextFilterRow(f.column, { operator: f.operator || '=', value: f.value || '' });
-        } else {
-          const first = container.querySelector('.text-filter-row');
-          if (first) {
-            first.querySelector('.text-filter-op').value = f.operator || '=';
-            first.querySelector('.text-filter-value').value = f.value || '';
-          }
-        }
+        // Every stored condition gets its own row; conditions of one column are joined with OR.
+        addTextFilterRow(f.column, { operator: f.operator || '=', value: f.value || '' });
       }
+    });
+    // Text columns without a stored condition keep one empty row, as on a new dashboard.
+    $$('#filter-bar .text-filter-rows').forEach(el => {
+      if (!el.children.length) addTextFilterRow(el.dataset.col, { operator: 'contains' });
     });
   }
 
@@ -2554,10 +2566,9 @@
         }
       }
       td.appendChild(valSpan);
-      const isMeasure = !!state.currentDashboard.aggregations[col];
       td.addEventListener('click', (e) => {
         e.stopPropagation();
-        quickFilter(col, row[col], isMeasure);
+        copyCellValue(td);
       });
       r.appendChild(td);
     });
@@ -2587,39 +2598,68 @@
     btn.textContent = hidden ? '▸' : '▼';
   }
 
-  function quickFilter(col, value, isMeasure = false) {
-    if (value === null || value === undefined) return;
-    if (isMeasure) return;
-    const dash = state.currentDashboard;
-    const colInfo = state.columns.find(c => c.name === col);
-    if (!colInfo) return;
-    const type = colInfo.type;
-    const existing = dash.filters.find(f => f.column === col);
-    if (type === 'number') {
-      if (existing) {
-        existing.min_value = value;
-        existing.max_value = value;
-      } else {
-        dash.filters.push({ column: col, type: 'number', min_value: value, max_value: value });
-      }
-    } else if (type === 'date') {
-      const strVal = String(value).split('T')[0];
-      if (existing) {
-        existing.from_value = strVal;
-        existing.to_value = strVal;
-      } else {
-        dash.filters.push({ column: col, type: 'date', from_value: strVal, to_value: strVal });
-      }
-    } else {
-      const strVal = String(value);
-      if (existing) {
-        existing.value = strVal;
-      } else {
-        dash.filters.push({ column: col, type: 'text', value: strVal });
-      }
+  // Clicking a table cell copies the shown value; it no longer adds a filter.
+  let copyToastTimer = null;
+  function copyCellValue(td) {
+    const selection = window.getSelection && window.getSelection();
+    // Selecting text with the mouse keeps the browser's own copy behaviour.
+    if (selection && !selection.isCollapsed && td.contains(selection.anchorNode)) return;
+    const text = (td.innerText || td.textContent || '').trim();
+    if (!text) return;
+    writeClipboard(text).then(ok => showCopyToast(td, ok ? t('cell_copied_toast', { value: text }) : t('cell_copy_failed_toast')), () => showCopyToast(td, t('cell_copy_failed_toast')));
+  }
+
+  function writeClipboard(text) {
+    if (navigator.clipboard && window.isSecureContext) {
+      return navigator.clipboard.writeText(text).then(() => true, () => legacyCopy(text));
     }
-    applyStoredFilters(dash.filters);
-    refreshData();
+    return Promise.resolve(legacyCopy(text));
+  }
+
+  function legacyCopy(text) {
+    const area = document.createElement('textarea');
+    area.value = text;
+    area.setAttribute('readonly', '');
+    area.style.position = 'fixed';
+    area.style.opacity = '0';
+    document.body.appendChild(area);
+    area.select();
+    let ok = false;
+    try {
+      ok = document.execCommand('copy');
+    } catch (e) {
+      ok = false;
+    }
+    area.remove();
+    return ok;
+  }
+
+  function showCopyToast(td, message) {
+    let toast = $('#copy-toast');
+    if (!toast) {
+      toast = document.createElement('div');
+      toast.id = 'copy-toast';
+      toast.className = 'copy-toast';
+      toast.setAttribute('role', 'status');
+      toast.setAttribute('aria-live', 'polite');
+      document.body.appendChild(toast);
+    }
+    toast.textContent = message;
+    const rect = td.getBoundingClientRect();
+    toast.classList.add('show');
+    const width = toast.offsetWidth;
+    const left = Math.min(window.innerWidth - width - 8, Math.max(8, rect.left + rect.width / 2 - width / 2));
+    const top = rect.top - toast.offsetHeight - 8 > 8 ? rect.top - toast.offsetHeight - 8 : rect.bottom + 8;
+    toast.style.left = `${left}px`;
+    toast.style.top = `${top}px`;
+    td.classList.remove('cell-copied');
+    void td.offsetWidth; // restart the flash animation
+    td.classList.add('cell-copied');
+    clearTimeout(copyToastTimer);
+    copyToastTimer = setTimeout(() => {
+      toast.classList.remove('show');
+      td.classList.remove('cell-copied');
+    }, 1600);
   }
 
   function clearTable() {
@@ -3282,7 +3322,9 @@
     const height = heightEl ? parseInt(heightEl.value) || 360 : 360;
     const list = $('#chart-list');
     if (list) {
-      list.style.gridTemplateColumns = `repeat(${perRow}, minmax(0, 1fr))`;
+      // The setting is the maximum per row; narrow screens fit fewer (responsive.css).
+      list.style.removeProperty('grid-template-columns');
+      list.style.setProperty('--charts-per-row', String(perRow));
       list.style.setProperty('--card-height', height + 'px');
       list.querySelectorAll('.chart-card').forEach(card => {
         card.style.height = height + 'px';

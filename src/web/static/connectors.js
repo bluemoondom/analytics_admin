@@ -186,15 +186,27 @@
       list.appendChild(li);
     });
 
+    // The whole row opens the connector form, like a dashboard row.
+    list.querySelectorAll('li').forEach((li) => {
+      const btn = li.querySelector('.edit-connector');
+      if (!btn) return;
+      li.addEventListener('click', () => {
+        const connector = state.connectors.find((c) => String(c.id) === btn.dataset.id);
+        if (connector) setFormData(connector);
+      });
+    });
+
     list.querySelectorAll('.edit-connector').forEach((btn) => {
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
         const connector = state.connectors.find((c) => String(c.id) === btn.dataset.id);
         if (connector) setFormData(connector);
       });
     });
 
     list.querySelectorAll('.activate-connector').forEach((btn) => {
-      btn.addEventListener('click', async () => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
         try {
           await api('POST', `/${btn.dataset.id}/activate`);
           state.currentConnectorId = parseInt(btn.dataset.id, 10);
