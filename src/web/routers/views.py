@@ -1,4 +1,4 @@
-"""API routes for view modeling (joins, columns, TabObecnyPrehled storage)."""
+"""API routes for view modeling (joins, columns, saved views and sharing)."""
 
 from __future__ import annotations
 
@@ -118,14 +118,13 @@ def preview_view(
 def save_view(
     payload: dict[str, Any], user: Annotated[User, Depends(require_user)]
 ):
-    """Save a modeled view as a new row in TabObecnyPrehled."""
+    """Save a modeled view (a new one, or the own view of the same name)."""
     service = _user_service(user, payload)
     try:
         name = service._helios_view_name((payload.get("name") or "").strip())
-        existing_id = service._existing_view_id(name) if name and service._tab_obecny_prehled_exists() else None
-        if existing_id is not None:
-            # Saving under an existing name overwrites that row; only its author may.
-            row = service.get_saved_view(existing_id)
+        row = service.get_saved_view_by_name(name) if name else None
+        if row is not None:
+            # Saving under an existing name overwrites that view; only its author may.
             access, _share = sharing.view_access(service, row)
             if access != sharing.ACCESS_OWNER:
                 raise HTTPException(
@@ -142,7 +141,7 @@ def save_view(
 
 @router.get("/saved", response_model=list[dict[str, Any]])
 def list_saved_views(user: Annotated[User, Depends(require_user)]):
-    """Return views stored in TabObecnyPrehled for the user's connector."""
+    """Return the saved views of the user's connector and views shared with it."""
     service = _user_service(user)
     return service.list_saved_views()
 
@@ -203,15 +202,15 @@ def update_saved_view(
 def delete_saved_view(
     view_id: int, user: Annotated[User, Depends(require_user)]
 ):
-    """Delete a saved view from TabObecnyPrehled (author only)."""
+    """Delete a saved view (author only)."""
     service = _user_service(user)
     _require_view_owner(service, view_id)
     try:
-        service.delete_view(view_id)
+        warnings = service.delete_view(view_id)
     except DatabaseError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     sharing.on_view_deleted(service.connector, view_id)
-    return {"deleted": True}
+    return {"deleted": True, "warnings": warnings or []}
 
 
 # ---------------------------------------------------------------------------
@@ -354,9 +353,3 @@ def get_api_config(
         "ssl_certfile": settings.SSL_CERTFILE or "",
         "ssl_pfx_path": settings.SSL_PFX_PATH or "",
     }
-
-
-def ensure_tab_obecny_prehled_exists() -> None:
-    """Public helper used by application startup if needed."""
-    service = ViewModelingService()
-    service.ensure_tab_obecny_prehled_table()

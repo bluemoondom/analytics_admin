@@ -552,5 +552,7 @@
   "table_nav_prev": "Předchozí sloupec (←)",
   "table_nav_next": "Další sloupec (→)",
   "table_nav_scrollbar": "Posun tabulky do stran",
-  "table_nav_info": "Sloupce {from}–{to} z {total}"
+  "table_nav_info": "Sloupce {from}–{to} z {total}",
+  "connector_analytics_admin_only_hint": "V dashboardech nabízet jen views uložená v Analytics admin, bez tabulek a views přímo z databáze.",
+  "view_db_warnings": "Upozornění:\n{warnings}\n\nV Analytics Admin je view uložené a dashboardy s ním fungují."
 }

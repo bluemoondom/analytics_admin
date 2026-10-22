@@ -552,5 +552,7 @@
   "table_nav_prev": "Vorherige Spalte (←)",
   "table_nav_next": "Nächste Spalte (→)",
   "table_nav_scrollbar": "Tabelle seitlich verschieben",
-  "table_nav_info": "Spalten {from}–{to} von {total}"
+  "table_nav_info": "Spalten {from}–{to} von {total}",
+  "connector_analytics_admin_only_hint": "Als Dashboard-Quellen nur in Analytics admin gespeicherte Views anbieten, ohne Tabellen und Views der Datenbank.",
+  "view_db_warnings": "Hinweis:\n{warnings}\n\nDie View ist in Analytics Admin gespeichert und Dashboards funktionieren damit."
 }

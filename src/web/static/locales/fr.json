@@ -552,5 +552,7 @@
   "table_nav_prev": "Colonne précédente (←)",
   "table_nav_next": "Colonne suivante (→)",
   "table_nav_scrollbar": "Faire défiler le tableau horizontalement",
-  "table_nav_info": "Colonnes {from}–{to} sur {total}"
+  "table_nav_info": "Colonnes {from}–{to} sur {total}",
+  "connector_analytics_admin_only_hint": "Ne proposer comme sources de tableau de bord que les views enregistrées dans Analytics admin, sans les tables et views de la base.",
+  "view_db_warnings": "Attention :\n{warnings}\n\nLa view est enregistrée dans Analytics Admin et les tableaux de bord fonctionnent avec elle."
 }

@@ -552,5 +552,7 @@
   "table_nav_prev": "Previous column (←)",
   "table_nav_next": "Next column (→)",
   "table_nav_scrollbar": "Scroll the table sideways",
-  "table_nav_info": "Columns {from}–{to} of {total}"
+  "table_nav_info": "Columns {from}–{to} of {total}",
+  "connector_analytics_admin_only_hint": "Offer only views saved in Analytics admin as dashboard sources, without the tables and views of the database.",
+  "view_db_warnings": "Warning:\n{warnings}\n\nThe view is saved in Analytics Admin and dashboards work with it."
 }

@@ -4,21 +4,24 @@ Only the author of a view (the owner of the connector the view was saved
 through) can share it. The author enters the recipient connector's share code;
 an invitation with a snapshot of the view definition is stored in the
 application metadata database. Nothing is written into the recipient's
-database until the recipient accepts.
+database until the recipient accepts; an accepted copy is then saved like any
+other view (on a Helios database also into its TabObecnyPrehled).
 
-On acceptance there are two cases:
+View definitions live in the application metadata database (see
+view_catalog). On acceptance there are two cases:
 
-* **Same database** - the author's row is found in the recipient connector's
-  ``TabObecnyPrehled`` (same ID, name and owner). No copy is made; the share
-  record alone makes the view visible to the recipient.
+* **Same database** - the recipient connector points to the same database as
+  the author's (same engine, server, port and database name). No copy is made;
+  the share record alone makes the author's view visible to the recipient,
+  always in its current version.
 * **Another database** - the view is rebuilt and probed against the
-  recipient's database and saved there as a read-only copy whose note keeps a
-  ``shared_from`` reference to the share.
+  recipient's database and saved as a read-only copy owned by the recipient
+  connector whose note keeps a ``shared_from`` reference to the share.
 
 Recipients never edit shared views. When the author saves a new version,
 accepted copies get ``update_available`` and the recipient decides whether to
 take it. Revoking (author) or removing (recipient) only hides the view; copies
-are not deleted from the recipient's database.
+are not deleted.
 
 The share record is the single source of truth for visibility: a copy whose
 share is no longer accepted is hidden, and same-database access exists only
@@ -276,6 +279,25 @@ class ShareStorage:
             conn.commit()
             return int(cur.lastrowid)
 
+    def remap_view_ids(self, connector_id: int, old_id: int, new_id: int, view_name: str | None = None) -> None:
+        """Point shares at a view's new id after it was imported into the catalog."""
+        name_clause = " AND view_name = ?" if view_name else ""
+        extra = (view_name,) if view_name else ()
+        self._execute(
+            "UPDATE view_shares SET source_view_id = ? WHERE source_connector_id = ? AND source_view_id = ?" + name_clause,
+            (new_id, connector_id, old_id, *extra),
+        )
+        self._execute(
+            "UPDATE view_shares SET target_view_id = ? WHERE target_connector_id = ? AND target_view_id = ?" + name_clause,
+            (new_id, connector_id, old_id, *extra),
+        )
+        # Live (same database) shares point their target at the author's view.
+        self._execute(
+            "UPDATE view_shares SET target_view_id = ? WHERE source_connector_id = ? AND mode = ? "
+            "AND target_view_id = ?" + name_clause,
+            (new_id, connector_id, MODE_SAME_DB, old_id, *extra),
+        )
+
     def update(self, share_id: int, **fields: Any) -> None:
         if not fields:
             return
@@ -304,9 +326,8 @@ def _is_owner_note(service: ViewModelingService, row: dict[str, Any], connector:
         return False
     owner = note.get("connector_id")
     if owner is None:
-        # Legacy rows without an owner keep their previous behaviour: visible
-        # to (and editable by) connectors listing them.
-        return service._note_owned_by_connector(row.get("Poznamka"))
+        # Rows without an owner in the note belong to the connector holding them.
+        owner = row.get("ConnectorId")
     return owner == connector.id
 
 
@@ -608,18 +629,47 @@ def share_detail(user: User, share_id: int) -> dict[str, Any]:
     return summary
 
 
+_DEFAULT_PORTS = {"mssql": 1433, "mysql": 3306, "mariadb": 3306, "postgresql": 5432, "postgres": 5432}
+_LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1", "(local)", "."}
+
+
+def database_identity(connector: Connector) -> tuple[str, str, int, str]:
+    """Normalized (engine, server, port, database) a connector points to."""
+    engine = (connector.db_type or "mssql").strip().lower()
+    if engine == "sqlite":
+        return engine, "", 0, os.path.abspath(connector.db_name or "").lower()
+    host = (connector.db_host or "").strip().lower()
+    if host.startswith("tcp:"):
+        host = host[4:]
+    port = int(connector.db_port or 0)
+    if "," in host:  # SQL Server "server,port"
+        host, _, port_text = host.partition(",")
+        if port_text.strip().isdigit():
+            port = int(port_text.strip())
+    host = host.rstrip(".")
+    server, _, instance = host.partition("\\")
+    if server in _LOCAL_HOSTS:
+        server = "localhost"
+    host = server + ("\\" + instance if instance else "")
+    return engine, host, port or _DEFAULT_PORTS.get(engine, 0), (connector.db_name or "").strip().lower()
+
+
 def _same_database_row(service: ViewModelingService, share: dict[str, Any]) -> dict[str, Any] | None:
-    """Return the author's row if the recipient connector sees the same database."""
-    try:
-        row = service.get_saved_view(int(share["source_view_id"]))
-    except DatabaseError:
+    """Return the author's view if the recipient connector uses the same database."""
+    from src.web.services.view_catalog import ViewCatalog, ensure_imported_by_id, to_view_row
+
+    source = UserStorage().get_connector_by_id(int(share["source_connector_id"]))
+    if source is None or service.connector is None:
         return None
-    if not row or row.get("NazevSys") != share["view_name"]:
+    if database_identity(source) != database_identity(service.connector):
         return None
-    note = _decode_note(service, row)
-    if note.get("connector_id") != share["source_connector_id"] or note.get("shared_from"):
+    ensure_imported_by_id(source.id)
+    record = ViewCatalog().get(int(share["source_view_id"]))
+    if not record or record.get("connector_id") != source.id or record.get("name") != share["view_name"]:
         return None
-    return row
+    if _decode_note(service, {"Poznamka": record.get("note")}).get("shared_from"):
+        return None
+    return to_view_row(record)
 
 
 def _copy_payload(service: ViewModelingService, share: dict[str, Any], target: Connector) -> dict[str, Any]:
@@ -649,11 +699,15 @@ def accept_share(user: User, share_id: int) -> dict[str, Any]:
 
     service = ViewModelingService(connector=target)
     try:
-        if not service._tab_obecny_prehled_exists():
-            raise SharingError("Ve vaší databázi neexistuje tabulka TabObecnyPrehled.")
-
         same_row = _same_database_row(service, share)
         if same_row is not None:
+            own = service._existing_view_id(same_row.get("NazevSys") or "")
+            if own is not None:
+                raise SharingError(
+                    f"Mezi vašimi views už je view s názvem {same_row.get('NazevSys')}. "
+                    "Přejmenujte nebo smažte své view a sdílení přijměte znovu."
+                )
+            _probe_sql(service, same_row.get("DefView") or "")
             storage.update(share_id, status=STATUS_ACCEPTED, mode=MODE_SAME_DB,
                            target_view_id=same_row.get("ID"), update_available=False, message=None)
             return {**share_summary(storage.get(share_id), for_author=False),
@@ -667,13 +721,13 @@ def accept_share(user: User, share_id: int) -> dict[str, Any]:
             origin = _decode_note(service, existing).get("shared_from") or {}
             if int(origin.get("share_id") or 0) != share_id:
                 raise SharingError(
-                    f"Ve vaší databázi už existuje view s názvem {name}. "
+                    f"Mezi vašimi views už je view s názvem {name}. "
                     "Přejmenujte nebo smažte své view a sdílení přijměte znovu."
                 )
         sql = service.build_sql(payload)
         _probe_sql(service, sql)
         if existing_id is not None:
-            service.update_view(existing_id, payload)
+            saved = service.update_view(existing_id, payload)
             target_view_id = existing_id
         else:
             saved = service.save_view(payload)
@@ -691,7 +745,8 @@ def accept_share(user: User, share_id: int) -> dict[str, Any]:
     storage.update(share_id, status=STATUS_ACCEPTED, mode=MODE_COPY,
                    target_view_id=target_view_id, update_available=False, message=None)
     return {**share_summary(storage.get(share_id), for_author=False),
-            "result": "updated" if is_update else "copied"}
+            "result": "updated" if is_update else "copied",
+            "warnings": saved.get("warnings") or []}
 
 
 def decline_share(user: User, share_id: int) -> dict[str, Any]:
@@ -707,7 +762,7 @@ def decline_share(user: User, share_id: int) -> dict[str, Any]:
 
 
 def remove_share(user: User, share_id: int) -> dict[str, Any]:
-    """Recipient removes a shared view from their list (the copy is left in place)."""
+    """Recipient removes a shared view from their list (a copy is only hidden)."""
     storage, share, _target = _require_recipient(user, share_id)
     if share["status"] != STATUS_ACCEPTED:
         raise SharingError("View není sdílené.")

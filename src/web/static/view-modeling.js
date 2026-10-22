@@ -1019,7 +1019,9 @@
       const res = await api('POST', '/shares/' + p.id + '/accept');
       const key = res.result === 'same_db' ? 'share_accepted_same_db'
         : res.result === 'updated' ? 'share_accepted_updated' : 'share_accepted_copied';
-      showResult(result, t(key, { connector: res.target_connector_name }), 'success');
+      const warned = res.warnings && res.warnings.length;
+      showResult(result, t(key, { connector: res.target_connector_name }) + dbWarningsText(res.warnings),
+        warned ? 'info' : 'success');
       accept.classList.add('hidden');
       decline.classList.add('hidden');
       await loadIncomingShares();
@@ -1870,6 +1872,13 @@
     }
   }
 
+  // Problems while publishing a view into the connector database (CREATE VIEW,
+  // TabObecnyPrehled); the view itself is saved in the application catalog.
+  function dbWarningsText(warnings) {
+    if (!Array.isArray(warnings) || !warnings.length) return '';
+    return '\n\n' + t('view_db_warnings', { warnings: warnings.join('\n') });
+  }
+
   async function saveView() {
     const payload = buildPayload();
     if (!payload.name) {
@@ -1888,7 +1897,7 @@
         state.viewId = result.id || state.viewId;
         state.viewConnectorId = getSelectedConnectorId();
         renderConnectorSelect();
-        alert(t('view_saved_success_alert', { name: result.name }));
+        alert(t('view_saved_success_alert', { name: result.name }) + dbWarningsText(result.warnings));
         loadSavedViews();
         notifyViewsChanged();
       } else {
@@ -2281,8 +2290,8 @@
       return;
     }
     try {
-      await api('DELETE', '/saved/' + state.viewId);
-      alert(t('delete_view_success_alert'));
+      const deleted = await api('DELETE', '/saved/' + state.viewId);
+      alert(t('delete_view_success_alert') + dbWarningsText(deleted && deleted.warnings));
       notifyViewsChanged();
       state.viewId = null;
       loadSavedViews();

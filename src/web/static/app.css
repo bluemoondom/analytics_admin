@@ -2828,7 +2828,7 @@ body.theme-bg-black .rp-accordion-header:hover { background: #374151; }
 .share-code-entry { display: flex; gap: 0.5rem; }
 .modal-content .share-code-entry input { flex: 1; margin: 0; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.85rem; }
 .share-code-entry + .hint { margin: 0.35rem 0 0.75rem; }
-.share-result { margin: 0 0 0.75rem; padding: 0.5rem 0.65rem; border-radius: 8px; font-size: 0.85rem; border-left: 3px solid var(--muted); background: #f9fafb; }
+.share-result { margin: 0 0 0.75rem; padding: 0.5rem 0.65rem; border-radius: 8px; font-size: 0.85rem; border-left: 3px solid var(--muted); background: #f9fafb; white-space: pre-line; }
 .share-result.info { border-left-color: var(--primary); background: var(--primary-light); color: #3730a3; }
 .share-result.success { border-left-color: #16a34a; background: #f0fdf4; color: #166534; }
 .share-result.error { border-left-color: #dc2626; background: #fef2f2; color: #991b1b; }

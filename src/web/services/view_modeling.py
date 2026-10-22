@@ -1,12 +1,14 @@
-"""Service layer for view modeling (joins, columns, TabObecnyPrehled storage)."""
+"""Service layer for view modeling (joins, columns, saved view definitions).
+
+Saved views live in the application metadata database (see view_catalog). On
+Helios databases they are also written to TabObecnyPrehled (see view_database).
+"""
 
 from __future__ import annotations
 
 import contextlib
 import re
 from typing import Any
-
-import pyodbc
 
 from src.web.config import get_settings
 from src.web.db import (
@@ -51,8 +53,13 @@ class ViewModelingService:
     """Backend logic for modeling custom views."""
 
     def __init__(self, connector=None):
-        self._tab_columns: list[str] | None = None
         self.connector = connector
+
+    def _is_mssql(self) -> bool:
+        """Whether the connector's engine is SQL Server."""
+        from src.web.dialects import dialect_for_connector
+
+        return dialect_for_connector(self.connector).table_hint() == "WITH (NOLOCK)"
 
     def _qi(self, name: str) -> str:
         """Quote a SQL identifier using this connector's dialect."""
@@ -386,12 +393,11 @@ class ViewModelingService:
         group_by = payload.get("group_by") or []
         order_by = payload.get("order_by") or []
         aggregations = payload.get("aggregations") or {}
-        helios_mode = (
-            include_order_by is False
-            or (
-                include_order_by is None
-                and self._tab_obecny_prehled_exists()
-            )
+        # Saved definitions are always used as a derived table
+        # ("SELECT ... FROM (definition) AS sq"); SQL Server does not allow
+        # ORDER BY there, other engines do.
+        helios_mode = include_order_by is False or (
+            include_order_by is None and self._is_mssql()
         )
 
         custom_columns = payload.get("custom_columns") or []
@@ -1026,18 +1032,23 @@ class ViewModelingService:
         sql = self.build_sql(payload)
         settings = get_settings()
         n = min(10, settings.PAGE_SIZE)
-        # SQL Server requires ORDER BY for OFFSET/FETCH. Re-use existing ORDER BY
-        # when present instead of appending a second one.
-        if re.search(r"\bORDER\s+BY\b", sql, re.IGNORECASE):
-            preview_sql = sql + f" OFFSET 0 ROWS FETCH NEXT {n} ROWS ONLY"
+        if self._is_mssql():
+            # SQL Server requires ORDER BY for OFFSET/FETCH. Re-use existing ORDER BY
+            # when present instead of appending a second one.
+            if re.search(r"\bORDER\s+BY\b", sql, re.IGNORECASE):
+                preview_sql = sql + f" OFFSET 0 ROWS FETCH NEXT {n} ROWS ONLY"
+            else:
+                preview_sql = sql + f" ORDER BY (SELECT NULL) OFFSET 0 ROWS FETCH NEXT {n} ROWS ONLY"
         else:
-            preview_sql = sql + f" ORDER BY (SELECT NULL) OFFSET 0 ROWS FETCH NEXT {n} ROWS ONLY"
+            from src.web.dialects import dialect_for_connector
+
+            preview_sql = dialect_for_connector(self.connector).limit_rows_sql(f"({sql}) AS sq", n)
         with _conn_with_cursor(self.connector) as (_conn, cur):
             try:
                 cur.execute(preview_sql)
                 rows = _fetchall_as_dicts(cur)
                 columns = [desc[0] for desc in (cur.description or [])]
-            except pyodbc.Error as exc:
+            except Exception as exc:  # any driver: pyodbc, pymssql, sqlite3, ...
                 raise DatabaseError(f"Chyba při náhledu view: {exc}") from exc
 
         return {
@@ -1092,36 +1103,39 @@ class ViewModelingService:
             )
         return columns
 
-    def _tab_obecny_prehled_columns(self) -> list[str]:
-        """Return actual columns of TabObecnyPrehled (cached per instance).
+    # ------------------------------------------------------------------
+    # Saved views (application metadata database, see view_catalog)
+    # ------------------------------------------------------------------
+    def _catalog(self):
+        from src.web.services.view_catalog import ViewCatalog, ensure_imported
 
-        Available only for MSSQL (Helios); other dialects do not persist views
-        into a host table, so the cache stays empty.
-        """
-        from src.web.db import dialect_for_connector
+        ensure_imported(self.connector)
+        return ViewCatalog()
 
-        if not dialect_for_connector(self.connector).list_tables_via_tabobecny_prehled():
-            return []
-        if self._tab_columns is not None:
-            return self._tab_columns
-        sql = """
-            SELECT c.name
-            FROM sys.columns c
-            JOIN sys.objects o ON c.object_id = o.object_id
-            WHERE o.name = 'TabObecnyPrehled'
-            ORDER BY c.column_id
-        """
-        with _conn_with_cursor(self.connector) as (_conn, cur):
-            try:
-                cur.execute(sql)
-                self._tab_columns = [r[0] for r in cur.fetchall()]
-            except pyodbc.Error:
-                self._tab_columns = []
-        return self._tab_columns
+    def _owner_id(self) -> int | None:
+        return getattr(self.connector, "id", None)
 
-    def _tab_obecny_prehled_exists(self) -> bool:
-        """Check whether TabObecnyPrehled exists."""
-        return bool(self._tab_obecny_prehled_columns())
+    def _shared_same_db_view_ids(self) -> dict[int, dict[str, Any]]:
+        """Author's view ids shared with this connector as live (same database) views."""
+        if self.connector is None:
+            return {}
+        from src.web.services.view_catalog import ensure_imported_by_id
+        from src.web.services.view_sharing import MODE_SAME_DB, ShareStorage
+
+        result: dict[int, dict[str, Any]] = {}
+        for share in ShareStorage().active_for_target_connector(self.connector.id):
+            if share["mode"] == MODE_SAME_DB:
+                ensure_imported_by_id(share["source_connector_id"])
+                result[int(share["source_view_id"])] = share
+        return result
+
+    def _visible(self, record: dict[str, Any] | None) -> bool:
+        """Own views of the connector, plus views shared with it as live views."""
+        if not record:
+            return False
+        if record.get("connector_id") == self._owner_id():
+            return True
+        return int(record["id"]) in self._shared_same_db_view_ids()
 
     def _build_def_attrs(self, payload: dict[str, Any]) -> str:
         """Return the DefAttrs value for TabObecnyPrehled as CR-separated lines.
@@ -1235,164 +1249,90 @@ class ViewModelingService:
 
     @staticmethod
     def _helios_view_name(name: str) -> str:
-        """Return the view name prefixed with hvw_ when TabObecnyPrehled is used."""
+        """Return the system name of a saved view (prefixed with hvw_, as in Helios)."""
         if not name:
             return name
         if name.lower().startswith("hvw_"):
             return name
         return f"hvw_{name}"
 
+    def _publisher(self):
+        from src.web.services.view_database import DatabaseViewPublisher
+
+        return DatabaseViewPublisher(self)
+
+    def _check_database_name(self, name: str, record: dict[str, Any] | None) -> None:
+        from src.web.services.view_database import ViewNameConflict
+
+        try:
+            self._publisher().check_name(name, record)
+        except ViewNameConflict as exc:
+            raise ViewModelingError(str(exc)) from exc
+
+    def _publish(
+        self,
+        view_id: int,
+        record_before: dict[str, Any] | None,
+        name: str,
+        note: str,
+        payload: dict[str, Any],
+    ) -> list[str]:
+        """Mirror the view into TabObecnyPrehled on Helios databases."""
+        warnings, helios_id = self._publisher().publish(record_before, name, note, payload)
+        if helios_id is not None and (record_before or {}).get("legacy_id") != helios_id:
+            try:
+                self._catalog().set_legacy_id(view_id, helios_id)
+            except Exception:  # the link is only an optimisation for later lookups
+                pass
+        return warnings
+
     def save_view(self, payload: dict[str, Any]) -> dict[str, Any]:
-        """Save the modeled view definition to TabObecnyPrehled."""
+        """Save the modeled view definition (new view, or the own view of that name).
+
+        The definition is stored in the application catalog; on Helios
+        databases it is also written to TabObecnyPrehled.
+        """
         name = (payload.get("name") or "").strip()
         if not name:
             raise ViewModelingError("Zadejte název view.")
-
-        if not self._tab_obecny_prehled_exists():
-            sql = self.build_sql(payload)
-            return {
-                "saved": False,
-                "reason": "Tabulka TabObecnyPrehled neexistuje. View nebylo uloženo.",
-                "sql": sql,
-            }
-
         name = self._helios_view_name(name)
-
-        columns = self._tab_obecny_prehled_columns()
-        # When re-saving an existing view, keep the same ID instead of inserting
-        # a new row with the same NazevSys.
-        existing_id = self._existing_view_id(name)
-
+        catalog = self._catalog()
+        existing = catalog.get_by_name(self._owner_id(), name)
+        if existing is not None:
+            return self.update_view(int(existing["id"]), payload)
         sql = self.build_sql(payload)
-
-        fields: dict[str, Any] = {}
-        defaults: dict[str, Any] = {
-            "NazevSys": name,
-            "Nazev": name,
-            "DefView": sql,
-            "JeToDBView": True,
-            "Systemovy": False,
-            "Skupina": "Uživatelské",
-            "Cislo": 0,
-            "Autor": self.connector.db_user if self.connector else get_settings().DB_USER,
-            "BlobTableName": "",
-            "Maximalizovat": False,
-            "KOdeslani": False,
-            "Poznamka": self._encode_view_note(payload),
-        }
-        for col, value in defaults.items():
-            if col in columns:
-                fields[col] = value
-
-        if "Cislo" in fields and fields["Cislo"] == 0:
-            fields["Cislo"] = self._next_cislo()
-
-        if "GUID" in columns:
-            import uuid
-
-            guid = uuid.uuid4()
-            fields["GUID"] = guid.bytes
-            # GUIDText is typically a computed column; do not try to insert it.
-            fields.pop("GUIDText", None)
-
-        if "DefAttrs" in columns:
-            fields["DefAttrs"] = self._def_attrs_sql_expression(payload)
-
-        col_list = ", ".join(self._qi(c) for c in fields)
-        placeholders = ", ".join("?" for _ in fields)
-        # DefAttrs is built by a SQL expression, so we substitute it inline.
-        insert_sql = f"INSERT INTO dbo.TabObecnyPrehled ({col_list}) VALUES ({placeholders})"
-        insert_sql = insert_sql.replace("?, ?, ?, ?", "?, ?, ?, ?")  # placeholder
-        # Replace the single ? that corresponds to DefAttrs with the expression.
-        # Because placeholders are positional, we collect literal params separately.
-        params: list[Any] = []
-        for col, value in fields.items():
-            if col == "DefAttrs":
-                continue
-            params.append(value)
-
-        def_attrs_expr = self._def_attrs_sql_expression(payload)
-        # Rebuild the SQL with DefAttrs expression inline.
-        quoted_fields = [self._qi(c) for c in fields]
-        value_parts: list[str] = []
-        for col in fields:
-            if col == "DefAttrs":
-                value_parts.append(def_attrs_expr)
-            else:
-                value_parts.append("?")
-        final_sql = (
-            f"INSERT INTO dbo.TabObecnyPrehled ({', '.join(quoted_fields)}) "
-            f"VALUES ({', '.join(value_parts)})"
-        )
-
-        with _conn_with_cursor(self.connector) as (conn, cur):
-            try:
-                if existing_id is not None:
-                    return self.update_view(existing_id, payload)
-                cur.execute(final_sql, tuple(params))
-                conn.commit()
-            except pyodbc.Error as exc:
-                raise DatabaseError(f"Nepodařilo se uložit view: {exc}") from exc
-
-        return {"saved": True, "name": name, "sql": sql}
+        self._check_database_name(name, None)
+        author = (self.connector.db_user if self.connector else get_settings().DB_USER) or ""
+        note = self._encode_view_note(payload)
+        try:
+            new_id = catalog.insert(self._owner_id(), name, sql, note, author)
+        except Exception as exc:
+            raise DatabaseError(f"Nepodařilo se uložit view: {exc}") from exc
+        warnings = self._publish(new_id, None, name, note, payload)
+        return {"saved": True, "id": new_id, "name": name, "sql": sql, "warnings": warnings}
 
     def _existing_view_id(self, name: str) -> int | None:
-        """Return the ID of an existing user view with the given NazevSys."""
-        columns = self._tab_obecny_prehled_columns()
-        if not columns or "ID" not in columns or "NazevSys" not in columns:
+        """Return the ID of the connector's own saved view with the given name."""
+        if not name:
             return None
-        sql = "SELECT ID FROM dbo.TabObecnyPrehled WHERE NazevSys = ?"
-        with _conn_with_cursor(self.connector) as (_conn, cur):
-            try:
-                cur.execute(sql, (name,))
-                row = cur.fetchone()
-                if row is None:
-                    return None
-                # pyodbc.Row supports indexing by position and by column name,
-                # but not dict-style .get() access.
-                return row[0]
-            except pyodbc.Error:
-                return None
+        record = self._catalog().get_by_name(self._owner_id(), name)
+        return int(record["id"]) if record else None
 
     def update_view(self, view_id: int, payload: dict[str, Any]) -> dict[str, Any]:
-        """Update an existing row in TabObecnyPrehled."""
+        """Update an existing saved view of this connector."""
         name = (payload.get("name") or "").strip()
         if not name:
             raise ViewModelingError("Zadejte název view.")
-
-        columns = self._tab_obecny_prehled_columns()
-        if not columns:
-            sql = self.build_sql(payload)
-            return {
-                "saved": False,
-                "reason": "Tabulka TabObecnyPrehled neexistuje. View nebylo uloženo.",
-                "sql": sql,
-            }
-
         name = self._helios_view_name(name)
-        sql = self.build_sql(payload)
-
-        existing = self.get_saved_view(view_id)
-        if not existing:
+        catalog = self._catalog()
+        record = catalog.get(view_id)
+        if not record or record.get("connector_id") != self._owner_id():
             raise ViewModelingError("Uložené view nebylo nalezeno.")
-        existing_note = self._decode_view_note(existing.get("Poznamka") or "")
-        # Editing a replicated view keeps the link to its source so a later
-        # replication updates this copy instead of reporting a name conflict.
+        existing_note = self._decode_view_note(record.get("note") or "")
+        # Editing a replicated view keeps the link to its source.
         if "replicated_from" not in payload and existing_note.get("replicated_from"):
             payload = {**payload, "replicated_from": existing_note["replicated_from"]}
-
-        fields: dict[str, Any] = {
-            "NazevSys": name,
-            "Nazev": name,
-            "DefView": sql,
-        }
-        if "Poznamka" in columns:
-            fields["Poznamka"] = self._encode_view_note(payload)
-        if "DefAttrs" in columns:
-            fields["DefAttrs"] = self._def_attrs_sql_expression(payload)
-
-        # Prevent moving a view to a different connector; connector_id in the note
-        # must match the connector used to load this view.
+        # A view stays with the connector it was saved through.
         existing_connector_id = existing_note.get("connector_id")
         new_connector_id = self._connector_id(payload)
         if (
@@ -1403,85 +1343,66 @@ class ViewModelingService:
             raise ViewModelingError(
                 "Nelze změnit konektor existujícího view. Vytvořte nové view, nebo ponechte stejný konektor."
             )
+        other = catalog.get_by_name(self._owner_id(), name)
+        if other is not None and int(other["id"]) != int(view_id):
+            raise ViewModelingError(f"View s názvem {name} už existuje. Zvolte jiný název.")
+        sql = self.build_sql(payload)
+        self._check_database_name(name, record)
+        note = self._encode_view_note(payload)
+        try:
+            catalog.update(view_id, name=name, def_view=sql, note=note)
+        except Exception as exc:
+            raise DatabaseError(f"Nepodařilo se upravit view: {exc}") from exc
+        warnings = self._publish(int(view_id), record, name, note, payload)
+        return {"saved": True, "id": view_id, "name": name, "sql": sql, "warnings": warnings}
 
-        set_parts: list[str] = []
-        params: list[Any] = []
-        for col, value in fields.items():
-            if col == "DefAttrs":
-                set_parts.append(f"{self._qi(col)} = {self._def_attrs_sql_expression(payload)}")
-            else:
-                set_parts.append(f"{self._qi(col)} = ?")
-                params.append(value)
-        set_clause = ", ".join(set_parts)
-        update_sql = f"UPDATE dbo.TabObecnyPrehled SET {set_clause} WHERE ID = ?"
-        params.append(view_id)
-        with _conn_with_cursor(self.connector) as (conn, cur):
-            try:
-                cur.execute(update_sql, tuple(params))
-                conn.commit()
-            except pyodbc.Error as exc:
-                raise DatabaseError(f"Nepodařilo se upravit view: {exc}") from exc
+    def delete_view(self, view_id: int) -> list[str]:
+        """Delete a saved view of this connector (and its TabObecnyPrehled row).
 
-        return {"saved": True, "id": view_id, "name": name, "sql": sql}
-
-    def delete_view(self, view_id: int) -> None:
-        """Delete a row from TabObecnyPrehled."""
-        columns = self._tab_obecny_prehled_columns()
-        if not columns or "ID" not in columns:
-            raise DatabaseError("Tabulka TabObecnyPrehled neexistuje. View nebylo smazáno.")
-        sql = "DELETE FROM dbo.TabObecnyPrehled WHERE ID = ?"
-        with _conn_with_cursor(self.connector) as (conn, cur):
-            try:
-                cur.execute(sql, (view_id,))
-                conn.commit()
-            except pyodbc.Error as exc:
-                raise DatabaseError(f"Nepodařilo se smazat view: {exc}") from exc
+        Returns warnings when the TabObecnyPrehled row could not be removed.
+        """
+        catalog = self._catalog()
+        record = catalog.get(view_id)
+        if not record or record.get("connector_id") != self._owner_id():
+            raise DatabaseError("View nebylo nalezeno.")
+        try:
+            catalog.delete(view_id)
+        except Exception as exc:
+            raise DatabaseError(f"Nepodařilo se smazat view: {exc}") from exc
+        return self._publisher().unpublish(record)
 
     def get_saved_view_by_name(self, view_name: str) -> dict[str, Any] | None:
-        """Return a saved view row by its unique system name."""
-        columns = self._tab_obecny_prehled_columns()
-        if not columns:
-            return None
-        wanted = [c for c in ["ID", "NazevSys", "Nazev", "DefView", "Autor", "DatPorizeni", "Poznamka"] if c in columns]
-        sql = (
-            f"SELECT {', '.join(self._qi(c) for c in wanted)} "
-            f"FROM dbo.TabObecnyPrehled WHERE NazevSys = ?"
-        )
-        with _conn_with_cursor(self.connector) as (_conn, cur):
-            try:
-                cur.execute(sql, (view_name,))
-                row = cur.fetchone()
-                if row is None:
-                    return None
-                if isinstance(row, dict):
-                    return row
-                descriptions = cur.description or []
-                return dict(zip([desc[0] for desc in descriptions], row))
-            except pyodbc.Error as exc:
-                raise DatabaseError(f"Nelze načíst uložené view: {exc}") from exc
+        """Return a view visible to this connector by its system name.
+
+        The connector's own view (including a copy of a shared view) wins over a
+        live view shared with it under the same name.
+        """
+        from src.web.services.view_catalog import to_view_row
+
+        catalog = self._catalog()
+        own = catalog.get_by_name(self._owner_id(), view_name)
+        if own:
+            return to_view_row(own)
+        for view_id, share in self._shared_same_db_view_ids().items():
+            if share.get("view_name") != view_name:
+                continue
+            record = catalog.get(view_id)
+            if record and record["name"] == view_name:
+                return to_view_row(record)
+        return None
 
     def get_saved_view(self, view_id: int) -> dict[str, Any] | None:
-        """Return a single saved view row from TabObecnyPrehled."""
-        columns = self._tab_obecny_prehled_columns()
-        if not columns or "ID" not in columns:
+        """Return a saved view row visible to this connector."""
+        from src.web.services.view_catalog import to_view_row
+
+        try:
+            view_id = int(view_id)
+        except (TypeError, ValueError):
             return None
-        wanted = [c for c in ["ID", "NazevSys", "Nazev", "DefView", "Autor", "DatPorizeni", "Poznamka"] if c in columns]
-        sql = (
-            f"SELECT {', '.join(self._qi(c) for c in wanted)} "
-            f"FROM dbo.TabObecnyPrehled WHERE ID = ?"
-        )
-        with _conn_with_cursor(self.connector) as (_conn, cur):
-            try:
-                cur.execute(sql, (view_id,))
-                row = cur.fetchone()
-                if row is None:
-                    return None
-                if isinstance(row, dict):
-                    return row
-                descriptions = cur.description or []
-                return dict(zip([desc[0] for desc in descriptions], row))
-            except pyodbc.Error as exc:
-                raise DatabaseError(f"Nelze načíst uložené view: {exc}") from exc
+        if not view_id:
+            return None
+        record = self._catalog().get(view_id)
+        return to_view_row(record) if self._visible(record) else None
 
     def parse_saved_view(self, view_id: int) -> dict[str, Any] | None:
         """Load a saved view and try to parse its DefView into editable parts."""
@@ -1507,6 +1428,8 @@ class ViewModelingService:
         parsed["joins"] = note.get("joins", parsed.get("joins", []))
         parsed["subviews"] = note.get("subviews", [])
         parsed["custom_columns"] = note.get("custom_columns", [])
+        if note.get("selected_columns"):
+            parsed["selected_columns"] = note["selected_columns"]
         parsed["group_by"] = note.get("group_by", [])
         parsed["order_by"] = note.get("order_by", [])
         parsed["aggregations"] = note.get("aggregations", {})
@@ -1518,6 +1441,38 @@ class ViewModelingService:
         parsed["shared_from"] = note.get("shared_from")
         parsed["raw_sql"] = definition
         return parsed
+
+    @staticmethod
+    def _brackets_for_quoted_identifiers(sql: str) -> str:
+        """Rewrite "ident" and `ident` as [ident] (outside string literals).
+
+        The SQL parser understands SQL Server brackets; views of other engines
+        quote identifiers with double quotes or backticks.
+        """
+        out: list[str] = []
+        i = 0
+        n = len(sql)
+        while i < n:
+            ch = sql[i]
+            if ch == "'":  # string literal, copied as is ('' is an escaped quote)
+                j = i + 1
+                while j < n:
+                    if sql[j] == "'" and (j + 1 >= n or sql[j + 1] != "'"):
+                        break
+                    j += 2 if sql[j] == "'" else 1
+                out.append(sql[i:j + 1])
+                i = j + 1
+            elif ch in ('"', "`"):
+                j = sql.find(ch, i + 1)
+                if j == -1:
+                    out.append(sql[i:])
+                    break
+                out.append("[" + sql[i + 1:j].replace("]", "]]") + "]")
+                i = j + 1
+            else:
+                out.append(ch)
+                i += 1
+        return "".join(out)
 
     def _parse_select_sql(self, sql: str) -> dict[str, Any]:
         """Best-effort parser for simple SELECT/FROM/JOIN SQL."""
@@ -1532,6 +1487,7 @@ class ViewModelingService:
         }
         if not sql:
             return result
+        sql = self._brackets_for_quoted_identifiers(sql)
         upper = sql.upper()
         # Find the outer FROM keyword (the one introducing the source table), not
         # FROM inside a subselect.  We do this by walking the uppercased string and
@@ -1830,6 +1786,13 @@ class ViewModelingService:
         note = {
             "description": (payload.get("description") or "").strip(),
             "primary_table": (payload.get("primary_table") or "").strip(),
+            # The column selection as modeled, so reopening a view does not
+            # depend on parsing the generated SQL (exact for every engine).
+            "selected_columns": [
+                {k: c.get(k, "") for k in ("table", "name", "alias")}
+                for c in (payload.get("selected_columns") or [])
+                if isinstance(c, dict) and c.get("name")
+            ],
             "where_clauses": payload.get("where_clauses") or [],
             "joins": payload.get("joins") or [],
             "subviews": payload.get("subviews") or [],
@@ -1852,64 +1815,10 @@ class ViewModelingService:
             note["shared_from"] = shared_from
         return json.dumps(note, ensure_ascii=False)
 
-    def _note_owned_by_connector(self, note_value: Any) -> bool:
-        """Return True if the decoded note belongs to the current connector."""
-        if self._connector_id() is None:
-            return True
-        note = self._decode_view_note(note_value or "")
-        note_connector_id = note.get("connector_id")
-        if note_connector_id is None:
-            # In strict mode we only want views created by this admin tool,
-            # so legacy rows without a connector_id are hidden. Otherwise keep
-            # backwards compatibility and show them to all connectors using the
-            # same DB user.
-            return not is_analytics_admin_only(self.connector)
-        return note_connector_id == self._connector_id()
-
-    def _next_cislo(self) -> int:
-        """Return next Cislo for user views, kept below the Helios reserved range.
-
-        System/user views in Helios use Cislo < 10000. Anything above that range
-        belongs to a different Helios concept, so we cap at 9999 and reuse gaps
-        when the sequence would otherwise overflow.
-        """
-        sql = "SELECT MAX(Cislo) AS m FROM dbo.TabObecnyPrehled WHERE Cislo < 10000"
-        with _conn_with_cursor(self.connector) as (_conn, cur):
-            try:
-                cur.execute(sql)
-                row = cur.fetchone()
-                next_value = (row[0] or 0) + 1 if row else 1
-                return min(next_value, 9999)
-            except pyodbc.Error:
-                return 1
-
     def list_saved_views(self) -> list[dict[str, Any]]:
-        """Return user-created rows from TabObecnyPrehled for this connector."""
-        columns = self._tab_obecny_prehled_columns()
-        if not columns:
-            return []
-        wanted = [c for c in ["ID", "NazevSys", "Nazev", "DefView", "Autor", "DatPorizeni", "Systemovy", "Poznamka"] if c in columns]
-        conditions: list[str] = []
-        params: list[Any] = []
-        if "Systemovy" in columns:
-            conditions.append("Systemovy = 0")
-        if "Autor" in columns:
-            conditions.append("Autor = ?")
-            params.append(self.connector.db_user if self.connector else get_settings().DB_USER)
-        where = " AND ".join(conditions)
-        if where:
-            where = "WHERE " + where
-        sql = (
-            f"SELECT {', '.join(self._qi(c) for c in wanted)} "
-            f"FROM dbo.TabObecnyPrehled {where} ORDER BY ID DESC"
-        )
-        with _conn_with_cursor(self.connector) as (_conn, cur):
-            try:
-                cur.execute(sql, tuple(params))
-                rows = _fetchall_as_dicts(cur)
-            except pyodbc.Error as exc:
-                raise DatabaseError(f"Nelze načíst uložené views: {exc}") from exc
-        own = [r for r in rows if self._note_owned_by_connector(r.get("Poznamka"))]
+        """Return the connector's saved views plus views shared with it."""
+        from src.web.services.view_catalog import to_view_row
         from src.web.services.view_sharing import annotate_saved_views
 
+        own = [to_view_row(r) for r in self._catalog().list_for_connector(self._owner_id())]
         return annotate_saved_views(self, own)
