@@ -1313,8 +1313,21 @@
   // ------------------------------------------------------------------
   // Data loading
   // ------------------------------------------------------------------
+  // An open dashboard reads its data through its own connector (the one it was
+  // created or accepted with); new dashboards use the active connector.
+  function dashboardConnectorId() {
+    return (state.currentDashboard && state.currentDashboard.connector_id) || null;
+  }
+
+  function connectorQuery() {
+    const id = dashboardConnectorId();
+    return id ? `?connector_id=${encodeURIComponent(id)}` : '';
+  }
+
   async function loadViews() {
-    const views = await api('GET', '/views');
+    const connectorId = dashboardConnectorId();
+    const views = await api('GET', '/views' + connectorQuery());
+    state.viewsConnectorId = connectorId;
     state.views = views;
     const sel = $('#view-select');
     // Read the selection after the fetch so a dashboard opened meanwhile keeps its view.
@@ -1341,10 +1354,14 @@
     const list = $('#dashboard-list');
     list.innerHTML = state.dashboards.map(d => {
       const active = state.currentDashboard && state.currentDashboard.id === d.id ? 'active' : '';
-      return `<li class="${active}" data-id="${d.id}">
+      // Copies of dashboards shared by someone else show who shared them.
+      const shared = d.shared_by
+        ? `${d.update_available ? `<span class="share-tag update">${esc(t('update_tag'))}</span> ` : ''}${esc(t('dashboard_shared_by', { email: d.shared_by }))} · `
+        : '';
+      return `<li class="${active}${d.shared_by ? ' is-shared-copy' : ''}" data-id="${d.id}">
         <div>
           <div>${esc(d.name)}</div>
-          <div class="meta">${esc(d.view_name)}</div>
+          <div class="meta">${shared}${esc(d.view_name)}</div>
         </div>
       </li>`;
     }).join('');
@@ -1405,12 +1422,18 @@
     renderDimensionPanel();
     renderMeasurePanel();
     $('#workspace').scrollTop = 0;
+    // A new dashboard uses the active connector: list its views.
+    if (state.viewsConnectorId) loadViews().catch(err => console.error('Failed to load views', err));
   }
 
   async function openDashboard(id) {
     closeChartInfo();
     const dash = await api('GET', '/' + id);
     state.currentDashboard = dash;
+    if ((dash.connector_id || null) !== (state.viewsConnectorId || null)) {
+      // The view picker lists the views of the dashboard's own connector.
+      try { await loadViews(); } catch (err) { console.error('Failed to load views', err); }
+    }
     state.chartInstances = {};
     state.chartCache = new Map();
     state.kpiValues = {};
@@ -1496,7 +1519,7 @@
       clearTable();
       return;
     }
-    const info = await api('GET', '/views/' + encodeURIComponent(viewName) + '/columns');
+    const info = await api('GET', '/views/' + encodeURIComponent(viewName) + '/columns' + connectorQuery());
     state.columns = info.columns;
 
     if (!dash.aggregations) dash.aggregations = {};
@@ -2188,7 +2211,7 @@
       row_limit: dash.row_limit,
     };
     try {
-      state.data = await api('POST', '/data', payload);
+      state.data = await api('POST', '/data' + connectorQuery(), payload);
       if (state.data.error) {
         clearTable();
         $('#row-count').textContent = state.data.error;
@@ -4389,7 +4412,7 @@
     if (!pending.length) return;
     pending.forEach(p => state.chartRequests.add(p.requestId));
     const viewName = dash.view_name;
-    api('POST', '/chart-data', {
+    api('POST', '/chart-data' + connectorQuery(), {
       view_name: viewName,
       filters: collectFilters(),
       replace_null_with_empty: dash.replace_null_with_empty !== false,
@@ -4923,6 +4946,15 @@
   function esc(str) {
     return String(str || '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
   }
+
+  // Used by dashboard-sharing.js.
+  window.DashboardApp = {
+    api,
+    esc,
+    currentDashboard: () => state.currentDashboard,
+    openDashboard: (id) => openDashboard(id),
+    reloadDashboards: () => loadDashboards(),
+  };
 
   init();
 })();

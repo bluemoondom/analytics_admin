@@ -148,6 +148,10 @@ class DashboardSummary(BaseModel):
     name: str
     view_name: str
     updated_at: datetime | None = None
+    # Set on the recipient's copy of a shared dashboard.
+    share_id: int | None = None
+    shared_by: str = ""
+    update_available: bool = False
 
 
 class DataQueryRequest(BaseModel):

@@ -3368,3 +3368,58 @@ body.theme-bg-black .copy-toast { background: #e5e7eb; color: #111827; }
   .copy-toast { transition: none; }
   .data-table td.cell-copied { animation: none; outline: 2px solid var(--primary); outline-offset: -2px; }
 }
+
+/* Sharing dashboards */
+.btn-icon-svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+#dshare-result .dshare-line { display: block; }
+#dshare-result .dshare-line + .dshare-line { margin-top: 0.25rem; }
+#dshare-result code,
+.dshare-view-option code,
+.dshare-connectors code,
+.dshare-preview-view code { font-size: 0.8rem; padding: 0 0.25rem; border-radius: 4px; background: rgba(99, 102, 241, 0.1); }
+.dshare-view-option {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin: 0 0 0.75rem;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--dimension-border);
+  border-radius: 8px;
+  background: var(--primary-light);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.dshare-view-option.hidden { display: none; }
+.dshare-view-option input { width: auto; margin: 0.15rem 0 0; accent-color: var(--primary-hover); }
+.dshare-preview-view { margin: -0.4rem 0 0.4rem; font-size: 0.85rem; color: var(--muted); }
+.dshare-connectors { list-style: none; margin: 0 0 0.75rem; padding: 0; display: flex; flex-direction: column; gap: 0.4rem; }
+.dshare-conn label {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 0.55rem;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.dshare-conn input { width: auto; margin: 0.2rem 0 0; accent-color: var(--primary-hover); }
+.dshare-conn label:has(input:checked) { border-color: var(--primary); background: var(--primary-light); }
+.dshare-conn.disabled label { cursor: not-allowed; opacity: 0.75; }
+.dshare-conn.disabled { color: var(--muted); }
+.dshare-conn-main { display: flex; flex-direction: column; min-width: 0; font-size: 0.85rem; }
+.dshare-conn-main .meta { font-size: 0.78rem; color: var(--muted); }
+.dshare-conn.status-ready .meta { color: #166534; }
+.dshare-conn.status-will_share .meta { color: #4338ca; }
+.dshare-conn.status-missing .meta,
+.dshare-conn.status-missing_columns .meta,
+.dshare-conn.status-conflict .meta { color: #b91c1c; }
+body.theme-bg-black .dshare-conn label { border-color: #4b5563; }
+body.theme-bg-black .dshare-conn label:has(input:checked),
+body.theme-bg-black .dshare-view-option { background: rgba(129, 140, 248, 0.18); border-color: #6366f1; }
+body.theme-bg-black .dshare-conn.status-ready .meta { color: #86efac; }
+body.theme-bg-black .dshare-conn.status-will_share .meta { color: #c7d2fe; }
+body.theme-bg-black .dshare-conn.status-missing .meta,
+body.theme-bg-black .dshare-conn.status-missing_columns .meta,
+body.theme-bg-black .dshare-conn.status-conflict .meta { color: #fca5a5; }

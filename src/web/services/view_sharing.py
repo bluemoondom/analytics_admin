@@ -506,9 +506,23 @@ def _require_author(service: ViewModelingService, view_id: int) -> dict[str, Any
 
 def share_view(user: User, source: Connector, view_id: int, code: str) -> dict[str, Any]:
     """Create (or renew) an invitation for the connector with the given code."""
+    target, owner = resolve_target(code, source)
+    share_id = share_view_to_connector(user, source, view_id, target, owner)
+    return share_summary(ShareStorage().get(share_id), for_author=True)
+
+
+def share_view_to_connector(
+    user: User, source: Connector, view_id: int, target: Connector, owner: User
+) -> int:
+    """Create (or renew) an invitation of the view for a known target connector.
+
+    Used by the share-code dialog and when a view is shared together with a
+    dashboard. Returns the share id.
+    """
+    if target.id == source.id:
+        raise SharingError("View nelze sdílet na konektor, ze kterého pochází.")
     service = ViewModelingService(connector=source)
     row = _require_author(service, view_id)
-    target, owner = resolve_target(code, source)
     snapshot = _snapshot(service, view_id)
     storage = ShareStorage()
     existing = storage.find(source.id, view_id, target.id)
@@ -533,7 +547,7 @@ def share_view(user: User, source: Connector, view_id: int, code: str) -> dict[s
             storage.update(share_id, status=STATUS_PENDING, snapshot=snapshot,
                            update_available=False, message=None,
                            view_name=row.get("NazevSys") or snapshot["name"])
-    return share_summary(storage.get(share_id), for_author=True)
+    return int(share_id)
 
 
 def list_view_shares(source: Connector, view_id: int) -> list[dict[str, Any]]:

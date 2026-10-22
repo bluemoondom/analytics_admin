@@ -5,7 +5,7 @@ from __future__ import annotations
 import datetime as dt
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 
 from src.web.auth import require_user
 from src.web.db import DatabaseError
@@ -18,6 +18,7 @@ from src.web.models.dashboard import (
     ExpandedChartUpdate,
 )
 from src.web.models.user import User, UserRole
+from src.web.services import dashboard_sharing as sharing
 from src.web.services.export import export_pivot_to_excel, export_table_to_excel
 from src.web.services.query import (
     dashboard_to_query_payload,
@@ -56,36 +57,148 @@ def _dashboard_connector(dashboard: Dashboard) -> Any:
     return UserStorage().get_connector_by_id(dashboard.connector_id)
 
 
+def _query_connector(user: User, connector_id: int | None) -> Any:
+    """Connector for an open dashboard: its own connector when it belongs to the user.
+
+    Dashboards keep the connector they were created (or accepted) with; the
+    active connector is used for new dashboards and as a fallback.
+    """
+    if connector_id:
+        connector = UserStorage().get_connector_by_id(int(connector_id))
+        if connector is not None and (connector.user_id == user.id or user.role == UserRole.ADMIN):
+            return connector
+    return _user_connector(user)
+
+
+ConnectorParam = Annotated[int | None, Query(alias="connector_id")]
+
+
 @router.get("/views", response_model=list[dict[str, Any]])
-def get_views(user: Annotated[User, Depends(require_user)]):
-    """Return the list of available source views for the user's connector."""
-    return discover_views(connector=_user_connector(user))
+def get_views(user: Annotated[User, Depends(require_user)], connector_id: ConnectorParam = None):
+    """Return the list of available source views for the dashboard's connector."""
+    return discover_views(connector=_query_connector(user, connector_id))
 
 
 @router.get("/views/{view_name}/columns")
-def get_view_columns(view_name: str, user: Annotated[User, Depends(require_user)]):
-    """Return columns for the selected view using the user's connector."""
+def get_view_columns(
+    view_name: str, user: Annotated[User, Depends(require_user)], connector_id: ConnectorParam = None
+):
+    """Return columns for the selected view using the dashboard's connector."""
     try:
-        return describe_view(view_name, connector=_user_connector(user))
+        return describe_view(view_name, connector=_query_connector(user, connector_id))
     except DatabaseError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post("/chart-data", response_model=dict[str, Any])
-def query_chart_data(payload: ChartDataRequest, user: Annotated[User, Depends(require_user)]):
+def query_chart_data(
+    payload: ChartDataRequest, user: Annotated[User, Depends(require_user)], connector_id: ConnectorParam = None
+):
     """Aggregate chart data on the server for the given (unsaved) chart definitions."""
-    return {"charts": run_chart_queries(payload, connector=_user_connector(user))}
+    return {"charts": run_chart_queries(payload, connector=_query_connector(user, connector_id))}
 
 
 @router.post("/data", response_model=dict[str, Any])
-def query_data(payload: DataQueryRequest, user: Annotated[User, Depends(require_user)]):
+def query_data(
+    payload: DataQueryRequest, user: Annotated[User, Depends(require_user)], connector_id: ConnectorParam = None
+):
     """Return filtered / sorted / grouped data for the table."""
-    return run_data_query(payload, connector=_user_connector(user))
+    return run_data_query(payload, connector=_query_connector(user, connector_id))
+
+
+# ---------------------------------------------------------------------------
+# Sharing dashboards (see services/dashboard_sharing.py)
+# ---------------------------------------------------------------------------
+def _sharing_http_error(exc: sharing.DashboardSharingError) -> HTTPException:
+    if isinstance(exc, sharing.DashboardShareNotFound):
+        return HTTPException(status_code=404, detail=str(exc))
+    return HTTPException(status_code=400, detail=str(exc))
+
+
+@router.get("/shares/incoming")
+def incoming_dashboard_shares(user: Annotated[User, Depends(require_user)]):
+    """Invitations and updates waiting for the user's decision."""
+    return sharing.incoming(user)
+
+
+@router.get("/shares/{share_id}")
+def dashboard_share_detail(share_id: int, user: Annotated[User, Depends(require_user)]):
+    """Share detail; for the recipient including which connectors can run it."""
+    try:
+        return sharing.share_detail(user, share_id)
+    except sharing.DashboardSharingError as exc:
+        raise _sharing_http_error(exc) from exc
+
+
+@router.post("/shares/{share_id}/accept")
+def accept_dashboard_share(
+    share_id: int,
+    user: Annotated[User, Depends(require_user)],
+    payload: Annotated[dict[str, Any] | None, Body()] = None,
+):
+    try:
+        return sharing.accept(user, share_id, (payload or {}).get("connector_id"))
+    except sharing.DashboardSharingError as exc:
+        raise _sharing_http_error(exc) from exc
+
+
+@router.post("/shares/{share_id}/decline")
+def decline_dashboard_share(share_id: int, user: Annotated[User, Depends(require_user)]):
+    try:
+        return sharing.decline(user, share_id)
+    except sharing.DashboardSharingError as exc:
+        raise _sharing_http_error(exc) from exc
+
+
+@router.post("/shares/{share_id}/revoke")
+def revoke_dashboard_share(share_id: int, user: Annotated[User, Depends(require_user)]):
+    try:
+        return sharing.revoke(user, share_id)
+    except sharing.DashboardSharingError as exc:
+        raise _sharing_http_error(exc) from exc
+
+
+@router.post("/{dashboard_id}/shares/check")
+def check_dashboard_share(
+    dashboard_id: int,
+    user: Annotated[User, Depends(require_user)],
+    payload: Annotated[dict[str, Any], Body()],
+):
+    """What sharing with this e-mail involves (recipient, missing views)."""
+    try:
+        return sharing.check_recipient(user, dashboard_id, str(payload.get("email") or ""))
+    except sharing.DashboardSharingError as exc:
+        raise _sharing_http_error(exc) from exc
+
+
+@router.get("/{dashboard_id}/shares")
+def list_dashboard_shares(dashboard_id: int, user: Annotated[User, Depends(require_user)]):
+    try:
+        return sharing.list_shares(user, dashboard_id)
+    except sharing.DashboardSharingError as exc:
+        raise _sharing_http_error(exc) from exc
+
+
+@router.post("/{dashboard_id}/shares")
+def share_dashboard(
+    dashboard_id: int,
+    user: Annotated[User, Depends(require_user)],
+    payload: Annotated[dict[str, Any], Body()],
+):
+    """Send the dashboard to a user by e-mail (optionally with its view)."""
+    try:
+        return sharing.share_dashboard(
+            user, dashboard_id, str(payload.get("email") or ""), bool(payload.get("share_view"))
+        )
+    except sharing.DashboardSharingError as exc:
+        raise _sharing_http_error(exc) from exc
 
 
 @router.get("/", response_model=list[DashboardSummary])
 def list_dashboards(storage: StorageDep, user: Annotated[User, Depends(require_user)]):
     """Return dashboards belonging to the current user."""
+    hidden = sharing.hidden_dashboard_ids(user.id)
+    copies = sharing.copy_info(user.id)
     return [
         DashboardSummary(
             id=d.id,
@@ -94,8 +207,10 @@ def list_dashboards(storage: StorageDep, user: Annotated[User, Depends(require_u
             name=d.name,
             view_name=d.view_name,
             updated_at=d.updated_at,
+            **(copies.get(d.id) or {}),
         )
         for d in storage.list_dashboards(user_id=user.id, include_all=False)
+        if d.id not in hidden
     ]
 
 
@@ -157,7 +272,9 @@ def update_dashboard(
     if user.role != UserRole.ADMIN:
         dashboard.user_id = existing.user_id
         dashboard.connector_id = existing.connector_id
-    return storage.save_dashboard(dashboard)
+    saved = storage.save_dashboard(dashboard)
+    sharing.on_dashboard_saved(saved)
+    return saved
 
 
 @router.put("/{dashboard_id}/charts/{chart_id}/description")
@@ -180,6 +297,9 @@ def set_chart_description(
         dashboard_id, chart_id, payload.description, payload.show_caption, updated_by, updated_at
     ):
         raise HTTPException(status_code=404, detail="Chart not found")
+    refreshed = storage.get_dashboard(dashboard_id)
+    if refreshed is not None:
+        sharing.on_dashboard_saved(refreshed)
     return {
         "id": chart_id,
         "description": payload.description,
@@ -218,6 +338,7 @@ def delete_dashboard(
     if not existing:
         raise HTTPException(status_code=404, detail="Dashboard not found")
     storage.delete_dashboard(dashboard_id)
+    sharing.on_dashboard_deleted(existing)
     return {"ok": True}
 
 

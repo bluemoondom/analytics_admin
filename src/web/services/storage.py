@@ -570,6 +570,11 @@ class DashboardStorage:
             return None
         if dashboard.user_id != user.id:
             return None
+        # A copy of a shared dashboard is hidden while its share is revoked.
+        from src.web.services.dashboard_sharing import hidden_dashboard_ids
+
+        if dashboard.id in hidden_dashboard_ids(user.id):
+            return None
         return dashboard
 
     def save_dashboard(self, dashboard: Dashboard) -> Dashboard:

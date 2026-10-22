@@ -24,7 +24,7 @@
     </div>
 
     <nav class="top-menu side-nav" data-i18n="sidebar_main_menu_label" data-i18n-attr="aria-label" aria-label="Hlavní menu">
-      <button id="menu-dashboards" type="button" class="nav-item primary active"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg><span data-i18n="menu_dashboards">Dashboardy</span></button>
+      <button id="menu-dashboards" type="button" class="nav-item primary active"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg><span data-i18n="menu_dashboards">Dashboardy</span><span class="nav-badge hidden" id="incoming-dashboard-badge" aria-live="polite"></span></button>
       <button id="menu-view-modeling" type="button" class="nav-item"><svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="5.5" rx="8" ry="3"/><path d="M4 5.5v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/><path d="M4 11.5v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg><span data-i18n="menu_view_modeling">Modelování views</span><span class="nav-badge hidden" id="incoming-share-badge" aria-live="polite"></span></button>
       <button id="menu-connectors" type="button" class="nav-item"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 7V3M15 7V3"/><rect x="6" y="7" width="12" height="6" rx="2"/><path d="M12 13v3a4 4 0 0 1-4 4H6"/></svg><span data-i18n="menu_connectors">Konektory</span></button>
     </nav>
@@ -39,6 +39,10 @@
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></svg>
         <input type="search" data-filter-list="dashboard-list" data-i18n="sidebar_search_placeholder" data-i18n-attr="aria-label" data-i18n-placeholder="sidebar_search_placeholder" placeholder="Hledat…" aria-label="Hledat" />
       </label>
+      <div id="incoming-dashboard-shares" class="incoming-shares hidden">
+        <h3 class="incoming-heading"><span data-i18n="incoming_shares_heading">Čeká na přijetí</span> <span class="nav-count" id="incoming-dashboard-count"></span></h3>
+        <ul id="incoming-dashboard-list" class="dashboard-list nav-list incoming-list"></ul>
+      </div>
       <ul id="dashboard-list" class="dashboard-list nav-list"></ul>
     </section>
 
@@ -200,6 +204,7 @@
               <button id="export-excel" class="btn" data-i18n="export_excel_title" data-i18n-attr="title" title="Export tabulky do Excelu"><img src="/static/icons/excel.svg" alt="" class="btn-icon" /> <span data-i18n="export_excel_button">Excel</span></button>
               <button id="export-pdf" class="btn" data-i18n="export_pdf_title" data-i18n-attr="title" title="Export grafů do PDF"><img src="/static/icons/pdf.svg" alt="" class="btn-icon" /> <span data-i18n="export_pdf_button">PDF</span></button>
               <button id="copy-dashboard" class="btn" data-i18n="copy_dashboard_title" data-i18n-attr="title" title="Vytvořit kopii dashboardu"><img src="/static/icons/copy.svg" alt="" class="btn-icon" /> <span data-i18n="copy_dashboard_button">Kopírovat</span></button>
+              <button id="share-dashboard" class="btn hidden" type="button" data-i18n="dashboard_share_title" data-i18n-attr="title" title="Sdílet dashboard s jiným uživatelem"><svg class="btn-icon btn-icon-svg" viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="5" r="2.6"/><circle cx="6" cy="12" r="2.6"/><circle cx="18" cy="19" r="2.6"/><path d="m8.3 10.8 7.4-4.4M8.3 13.2l7.4 4.4"/></svg> <span data-i18n="dashboard_share_button">Sdílet</span></button>
             </div>
 
             <button id="right-panel-open" class="btn right-panel-open primary" type="button">
@@ -893,9 +898,66 @@
   </div>
 </div>
 
+<!-- Sharing a dashboard (author) -->
+<div id="dshare-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="dshare-title">
+  <div class="modal-backdrop"></div>
+  <div class="modal-content share-modal-content">
+    <h4 id="dshare-title" data-i18n="dashboard_share_modal_title">Sdílet dashboard</h4>
+    <p id="dshare-name" class="share-subtitle"></p>
+    <label for="dshare-email" class="share-field-label" data-i18n="dashboard_share_email_label">E-mail příjemce</label>
+    <div class="share-code-entry">
+      <input id="dshare-email" type="email" autocomplete="off" spellcheck="false" placeholder="name@company.com" />
+      <button id="dshare-check" type="button" class="btn" data-i18n="share_verify_button">Ověřit</button>
+    </div>
+    <p class="hint" data-i18n="dashboard_share_email_hint">Příjemce dashboard uvidí po přihlášení a přijme nebo odmítne. Dostane vlastní kopii, kterou může upravovat.</p>
+    <div id="dshare-result" class="share-result hidden"></div>
+    <label id="dshare-view-option" class="dshare-view-option hidden">
+      <input type="checkbox" id="dshare-share-view" />
+      <span id="dshare-share-view-label"></span>
+    </label>
+    <h5 class="share-section-heading" data-i18n="share_existing_heading">Sdíleno s</h5>
+    <ul id="dshare-list" class="share-list"></ul>
+    <div class="modal-actions">
+      <button id="dshare-close" type="button" class="btn" data-i18n="share_close_button">Zavřít</button>
+      <button id="dshare-send" type="button" class="btn primary" disabled data-i18n="share_send_button">Sdílet</button>
+    </div>
+  </div>
+</div>
+
+<!-- Incoming shared dashboard (recipient) -->
+<div id="dshare-preview-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="dshare-preview-title">
+  <div class="modal-backdrop"></div>
+  <div class="modal-content share-modal-content">
+    <h4 id="dshare-preview-title"></h4>
+    <p id="dshare-preview-meta" class="share-subtitle"></p>
+    <p id="dshare-preview-view" class="dshare-preview-view"></p>
+    <div class="share-preview-grid">
+      <div>
+        <h5 class="share-section-heading" data-i18n="kpi_heading">KPI karty</h5>
+        <ul id="dshare-preview-kpis" class="share-chip-list"></ul>
+      </div>
+      <div>
+        <h5 class="share-section-heading" data-i18n="charts_heading">Grafy</h5>
+        <ul id="dshare-preview-charts" class="share-chip-list"></ul>
+      </div>
+    </div>
+    <h5 class="share-section-heading" data-i18n="dashboard_share_connector_heading">Konektor pro data</h5>
+    <ul id="dshare-connectors" class="dshare-connectors"></ul>
+    <p id="dshare-update-note" class="hint hidden" data-i18n="dashboard_share_update_note">Přijetím aktualizace nahradíte svou kopii aktuální verzí autora. Vaše úpravy kopie se nezachovají.</p>
+    <p id="dshare-preview-result" class="share-result hidden"></p>
+    <div class="modal-actions">
+      <span class="modal-actions-spacer"></span>
+      <button id="dshare-preview-close" type="button" class="btn" data-i18n="share_close_button">Zavřít</button>
+      <button id="dshare-preview-decline" type="button" class="btn"></button>
+      <button id="dshare-preview-accept" type="button" class="btn primary"></button>
+    </div>
+  </div>
+</div>
+
 {% endblock %}
 {% block scripts %}
 <script src="/static/view-modeling.js?v={{ asset_version }}"></script>
 <script src="/static/connectors.js?v={{ asset_version }}"></script>
 <script src="/static/app.js?v={{ asset_version }}"></script>
+<script src="/static/dashboard-sharing.js?v={{ asset_version }}"></script>
 {% endblock %}

@@ -86,6 +86,18 @@ Views can be shared with other users and connectors, including connectors pointi
 - The author sees the status of every share (waiting, accepted, error) and can revoke it; recipients can remove a shared view from their list. In both cases the view is only hidden, copies are kept
 - Shared views appear in the recipient's dashboards and can be exposed through the recipient's own public API (read-only, see Security)
 
+### Dashboard Sharing
+
+Whole dashboards (table settings, filters, KPI cards, charts with their descriptions and display settings) can be shared with another user by e-mail.
+
+- **Share** next to Copy opens the dialog; only users who already have an account can receive a dashboard (an unknown e-mail is refused)
+- **Verify** shows whether the recipient already has the dashboard's view. When it is the author's own saved view, it can be shared together with the dashboard (suggested when the recipient does not have it). A view the author received from someone else cannot be shared further; a dashboard reading a table directly is checked on acceptance
+- The recipient sees the invitation above the dashboard list (with a badge on **Dashboards**), previews the KPI cards and charts and picks the connector the dashboard will read data through. Only connectors where the view is available, or will be shared, and has every column the dashboard uses can be picked; the others show why (view missing, missing columns)
+- Accepting creates the recipient's own copy, which they can edit and share. When the view is shared along, the view share is created for the chosen connector and accepted in the same step (same database: live view; another database: the view is test-run there first, see View Sharing). It is then an ordinary view share, listed and revocable in View modeling
+- When the author saves a new version, the recipient is offered the update; accepting it replaces the copy with the author's version, declining keeps the current copy
+- The author sees the status of every share and can revoke it at any time; a revoked copy is hidden from the recipient (sharing it again brings the same copy back after it is accepted). A recipient who deletes the copy ends the share; if the author deletes the original, copies stay without further updates
+- Every dashboard reads its data through its own connector (the one it was created or accepted with), not the currently active one
+
 ---
 
 ## Database Connectors
@@ -153,7 +165,7 @@ pip install BI-analytics-admin
 python -m src.web.server
 ```
 
-Database changes are applied automatically on startup. The metadata database gets the `view_shares` table and a `share_uuid` column on `connectors` (existing connectors receive a code automatically), the `saved_views` and `saved_view_imports` tables (saved view definitions), the `expanded_chart` column on `dashboards` and the `description`, `show_caption`, `description_updated_by` and `description_updated_at` columns on `dashboard_charts`, so the database user needs permission to create and alter tables.
+Database changes are applied automatically on startup. The metadata database gets the `view_shares` table and a `share_uuid` column on `connectors` (existing connectors receive a code automatically), the `saved_views` and `saved_view_imports` tables (saved view definitions), the `dashboard_shares` table, the `expanded_chart` column on `dashboards` and the `description`, `show_caption`, `description_updated_by` and `description_updated_at` columns on `dashboard_charts`, so the database user needs permission to create and alter tables.
 
 Chart.js and jsPDF are served from `src/web/static/vendor` (see the README there); no external CDN is needed.
 
