@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import datetime
+import logging
 import decimal
 from typing import Any
 
@@ -11,6 +12,8 @@ import pyodbc
 
 from src.web.config import get_settings
 from src.web.dialects import dialect_for_connector
+
+logger = logging.getLogger(__name__)
 
 
 class DatabaseError(Exception):
@@ -50,7 +53,10 @@ def source_connection():
 
 
 def _tab_obecny_prehled_exists(conn: Any, dialect=None) -> bool:
-    """Check whether TabObecnyPrehled exists and is readable without raising."""
+    """Check whether TabObecnyPrehled exists and is readable without raising.
+
+    Used only to import views saved there by earlier versions.
+    """
     if dialect and not dialect.list_tables_via_tabobecny_prehled():
         return False
     sql = "SELECT 1 FROM sys.objects WHERE object_id = OBJECT_ID('dbo.TabObecnyPrehled') AND type IN ('U')"
@@ -105,92 +111,47 @@ def index_columns_for(table_name: str, connector=None) -> set[str]:
 
 
 def list_views(connector=None) -> list[dict[str, Any]]:
-    """Return available user views with their display and system names.
+    """Return views offered as dashboard sources.
 
-    Uses TabObecnyPrehled when available (MSSQL + Helios mode); otherwise
-    falls back to the dialect's metadata query for listing tables/views.
+    Views saved in Analytics Admin (the application catalog, including views
+    shared with the connector) come first, followed by the tables and views of
+    the connector's database.
     """
-    settings = get_settings()
+    from src.web.services.view_modeling import ViewModelingService
+
+    result: dict[str, dict[str, Any]] = {}
+    for row in ViewModelingService(connector=connector).list_saved_views():
+        name = row.get("NazevSys")
+        if name:
+            result[name] = {"system_name": name, "display_name": name, "kind": "saved"}
+
     dialect = dialect_for_connector(connector)
-    use_tab = (
-        (connector.view_discovery_mode if connector else settings.VIEW_DISCOVERY_MODE) == "tabobecny_prehled"
-        and dialect.list_tables_via_tabobecny_prehled()
-    )
-
-    with _conn_with_cursor(connector) as (conn, cur):
-        if use_tab and _tab_obecny_prehled_exists(conn, dialect):
-            sql = (
-                "SELECT DISTINCT NazevSys AS display_name, "
-                "COALESCE(NULLIF(NazevSys, ''), '') AS system_name "
-                "FROM TabObecnyPrehled WHERE NazevSys IS NOT NULL ORDER BY NazevSys"
-            )
-        elif use_tab:
-            # Helios mode was requested but TabObecnyPrehled is unavailable.
-            sql = (
-                "SELECT v.name AS system_name, "
-                "COALESCE(i.TABLE_NAME, v.name) AS display_name "
-                "FROM sys.views v "
-                "LEFT JOIN information_schema.views i ON i.TABLE_NAME = v.name "
-                "WHERE v.name NOT LIKE 'sys%' "
-                "ORDER BY COALESCE(i.TABLE_NAME, v.name)"
-            )
-        else:
-            sql = dialect.list_tables_sql()
-            # Keep the same output shape as the legacy list (kind column).
-            try:
-                cur.execute(sql)
-            except Exception as exc:
-                raise_dialect_error(exc, dialect)
-                raise
-            rows = cur.fetchall()
-            cols = [d[0] for d in (cur.description or [])]
-            result: dict[str, dict[str, Any]] = {}
-            for row in rows:
-                r = dict(zip(cols, row))
-                name = r.get("system_name") or r.get("display_name")
-                if not name:
-                    continue
-                result[name] = {
-                    "system_name": name,
-                    "display_name": name,
-                    "kind": r.get("kind", "table"),
-                }
-            return sorted(result.values(), key=lambda r: (r["kind"], (r["display_name"] or "").lower()))
-
+    with _conn_with_cursor(connector) as (_conn, cur):
         try:
-            cur.execute(sql)
-        except pyodbc.Error as exc:
-            raise DatabaseError(
-                f"Unable to read view list using mode '{settings.VIEW_DISCOVERY_MODE}'. "
-                "Check DB permissions or switch VIEW_DISCOVERY_MODE."
-            ) from exc
-        rows = _fetchall_as_dicts(cur)
-
-    # Deduplicate by system_name keeping the friendliest display_name.
-    seen: dict[str, dict[str, Any]] = {}
+            cur.execute(dialect.list_tables_sql())
+        except Exception as exc:
+            raise_dialect_error(exc, dialect)
+            raise DatabaseError(f"Nelze načíst seznam tabulek a view: {exc}") from exc
+        rows = cur.fetchall()
+        cols = [d[0] for d in (cur.description or [])]
+    database_objects: list[dict[str, Any]] = []
     for row in rows:
-        name = row.get("system_name") or row.get("display_name")
-        if not name:
+        r = row if isinstance(row, dict) else dict(zip(cols, row))
+        name = r.get("system_name") or r.get("display_name")
+        if not name or name in result:
             continue
-        existing = seen.get(name)
-        if existing is None or (
-            existing.get("display_name", "").startswith("hvw_")
-            and not (row.get("display_name", "").startswith("hvw_"))
-        ):
-            seen[name] = {
-                "system_name": name,
-                "display_name": row.get("display_name") or name,
-            }
-    return sorted(seen.values(), key=lambda r: r["display_name"].lower())
+        database_objects.append({"system_name": name, "display_name": name, "kind": r.get("kind", "table")})
+    database_objects.sort(key=lambda r: (r["kind"], (r["display_name"] or "").lower()))
+    saved = sorted(result.values(), key=lambda r: r["display_name"].lower())
+    return saved + database_objects
 
 
 def get_columns(view_name: str, connector=None) -> list[dict[str, Any]]:
     """Return columns for a given view, inferred from the first row.
 
-    For user views stored in TabObecnyPrehled, reads the saved DefView SQL so
-    the returned columns reflect the latest definition, not the previously
-    materialised database view.  Falls back to executing the view directly or
-    to sys.columns metadata when needed.
+    For views saved in Analytics Admin, reads the saved SQL so the returned
+    columns reflect the latest definition.  Falls back to executing the table
+    or view directly or to sys.columns metadata when needed.
     """
     def_view = _def_view_for(view_name, connector)
     return _columns_for_view(view_name, connector, def_view)
@@ -256,28 +217,21 @@ def _columns_from_descriptions(
 
 
 def _def_view_for(view_name: str, connector=None) -> str | None:
-    """Return the saved DefView for a TabObecnyPrehled entry, if any."""
-    dialect = dialect_for_connector(connector)
-    with _conn_with_cursor(connector) as (conn, cur):
-        if not _tab_obecny_prehled_exists(conn, dialect):
-            return None
-        try:
-            cur.execute(
-                "SELECT DefView FROM TabObecnyPrehled WHERE NazevSys = ?",
-                (view_name,),
-            )
-            row = cur.fetchone()
-            if row:
-                def_view = (
-                    row[0]
-                    if isinstance(row, (tuple, list))
-                    else getattr(row, "DefView", None)
-                )
-                if def_view and def_view.strip():
-                    return def_view.strip()
-        except pyodbc.Error:
-            pass
-    return None
+    """Return the SQL of a view saved in Analytics Admin, if the name is one.
+
+    Saved views are read from the application catalog (own views of the
+    connector and views shared with it). Any other name is a table or view of
+    the connector's database and is queried directly.
+    """
+    from src.web.services.view_modeling import ViewModelingService
+
+    try:
+        row = ViewModelingService(connector=connector).get_saved_view_by_name(view_name)
+    except Exception:  # catalog unavailable: treat the name as a database object
+        logger.exception("Saved view lookup failed for %s", view_name)
+        return None
+    definition = ((row or {}).get("DefView") or "").strip()
+    return definition or None
 
 
 def _columns_for_view(

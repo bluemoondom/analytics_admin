@@ -85,7 +85,11 @@ class SourceDialect:
         raise NotImplementedError
 
     def list_tables_via_tabobecny_prehled(self) -> bool:
-        """Whether this dialect can read the Helios TabObecnyPrehled table."""
+        """Whether the engine may hold a Helios TabObecnyPrehled table.
+
+        Only used to import views saved there by earlier versions into the
+        application catalog (see services/view_catalog.py).
+        """
         return False
 
     def table_exists_sql(self, name: str) -> str:

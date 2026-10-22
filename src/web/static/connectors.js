@@ -49,7 +49,6 @@
       db_user: $('#connector-db-user').value.trim(),
       db_password: $('#connector-db-password').value,
       db_driver: $('#connector-db-driver').value.trim(),
-      view_discovery_mode: $('#connector-view-mode').value,
       analytics_admin_views_only: $('#connector-analytics-admin-only').checked,
       api_tenant: $('#connector-api-tenant').value.trim(),
       api_key: $('#connector-api-key').value,
@@ -79,7 +78,6 @@
     pwdInput.value = '';
     pwdInput.placeholder = connector && connector.has_db_password ? '•••••••• (uloženo)' : '';
     $('#connector-db-driver').value = connector ? connector.db_driver : 'ODBC Driver 17 for SQL Server';
-    $('#connector-view-mode').value = connector ? connector.view_discovery_mode : 'tabobecny_prehled';
     const analyticsOnlyInput = $('#connector-analytics-admin-only');
     if (analyticsOnlyInput) {
       analyticsOnlyInput.checked = connector ? Boolean(connector.analytics_admin_views_only) : false;
@@ -124,8 +122,6 @@
     toggle('#connector-db-user', isFile);
     toggle('#connector-db-password', isFile);
     toggle('#connector-db-driver', type !== 'mssql');
-    toggle('#connector-view-mode', type !== 'mssql');
-    toggle('#connector-analytics-admin-only', type !== 'mssql');
     const portInput = $('#connector-db-port');
     if (!isFile && portInput && !state.editingConnector) {
       const defaults = { mssql: 1433, mysql: 3306, postgresql: 5432 };

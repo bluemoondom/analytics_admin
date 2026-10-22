@@ -25,11 +25,14 @@ def discover_views(connector=None) -> list[dict[str, Any]]:
         # Show only views created/saved by this Analytics admin tool.
         service = ViewModelingService(connector=connector)
         rows = service.list_saved_views()
-        return [
-            {"system_name": row["NazevSys"], "display_name": row["NazevSys"]}
-            for row in rows
-            if row.get("NazevSys")
-        ]
+        return sorted(
+            (
+                {"system_name": row["NazevSys"], "display_name": row["NazevSys"], "kind": "saved"}
+                for row in rows
+                if row.get("NazevSys")
+            ),
+            key=lambda r: r["display_name"].lower(),
+        )
     return list_views(connector=connector)
 
 

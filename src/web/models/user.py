@@ -33,6 +33,8 @@ class Connector(BaseModel):
     db_user: str
     db_password: str
     db_driver: str = "ODBC Driver 17 for SQL Server"
+    # No longer used: saved views live in the application catalog. Kept so
+    # existing connector rows and API clients keep working.
     view_discovery_mode: str = "tabobecny_prehled"
     analytics_admin_views_only: bool | None = None
     api_tenant: str = ""

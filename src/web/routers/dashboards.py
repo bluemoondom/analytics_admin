@@ -8,6 +8,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, HTTPException
 
 from src.web.auth import require_user
+from src.web.db import DatabaseError
 from src.web.models.dashboard import (
     ChartDataRequest,
     ChartDescriptionUpdate,
@@ -64,7 +65,10 @@ def get_views(user: Annotated[User, Depends(require_user)]):
 @router.get("/views/{view_name}/columns")
 def get_view_columns(view_name: str, user: Annotated[User, Depends(require_user)]):
     """Return columns for the selected view using the user's connector."""
-    return describe_view(view_name, connector=_user_connector(user))
+    try:
+        return describe_view(view_name, connector=_user_connector(user))
+    except DatabaseError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post("/chart-data", response_model=dict[str, Any])
