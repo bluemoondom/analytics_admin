@@ -9,8 +9,12 @@ from __future__ import annotations
 
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Body, HTTPException
+import time
 
+from fastapi import APIRouter, Body, HTTPException, Request
+
+from src.web.client_ip import client_ip
+from src.web.config import get_settings
 from src.web.db import DatabaseError
 from src.web.models.dashboard import ChartDataRequest, SortRule
 from src.web.routers.dashboards import excel_response, kpi_values
@@ -28,7 +32,27 @@ router = APIRouter(prefix="/api/public/dashboards", tags=["public dashboards"])
 INVALID = "Odkaz neplatí. Mohl vypršet, být zrušen, nebo byl dashboard smazán."
 
 
-def _resolve(token: str):
+# (token hash, client address, minute) -> requests
+_hits: dict[tuple[str, str, int], int] = {}
+
+
+def _rate_limit(token: str, request: Request) -> None:
+    """At most PUBLIC_LINK_MAX_REQUESTS_PER_MINUTE requests per link and address."""
+    limit = get_settings().PUBLIC_LINK_MAX_REQUESTS_PER_MINUTE
+    if limit <= 0:
+        return
+    minute = int(time.time() // 60)
+    key = (public_links.token_hash(token)[:32], client_ip(request), minute)
+    _hits[key] = _hits.get(key, 0) + 1
+    if len(_hits) > 10000:  # forget old windows
+        for old in [k for k in _hits if k[2] < minute]:
+            del _hits[old]
+    if _hits[key] > limit:
+        raise HTTPException(status_code=429, detail="Příliš mnoho požadavků. Zkuste to prosím za minutu.")
+
+
+def _resolve(token: str, request: Request):
+    _rate_limit(token, request)
     found = public_links.resolve(token)
     if found is None:
         raise HTTPException(status_code=404, detail=INVALID)
@@ -40,16 +64,16 @@ def _allowed_columns(dashboard) -> set[str]:
 
 
 @router.get("/{token}")
-def public_dashboard(token: str):
-    link, dashboard, _connector = _resolve(token)
+def public_dashboard(token: str, request: Request):
+    link, dashboard, _connector = _resolve(token, request)
     public_links.record_access(link)
     return public_links.public_definition(link, dashboard)
 
 
 @router.get("/{token}/columns")
-def public_columns(token: str):
+def public_columns(token: str, request: Request):
     """Column metadata of the columns the dashboard uses (no other columns of the view)."""
-    _link, dashboard, connector = _resolve(token)
+    _link, dashboard, connector = _resolve(token, request)
     allowed = _allowed_columns(dashboard)
     try:
         info = describe_view(dashboard.view_name, connector=connector)
@@ -60,9 +84,9 @@ def public_columns(token: str):
 
 
 @router.post("/{token}/data")
-def public_data(token: str, body: Annotated[dict[str, Any] | None, Body()] = None):
+def public_data(token: str, request: Request, body: Annotated[dict[str, Any] | None, Body()] = None):
     """Table data of the stored dashboard; only the sorting may come from the visitor."""
-    _link, dashboard, connector = _resolve(token)
+    _link, dashboard, connector = _resolve(token, request)
     payload = dashboard_to_query_payload(dashboard)
     body = body or {}
     allowed = _allowed_columns(dashboard)
@@ -94,9 +118,9 @@ def _chart_key(chart: dict[str, Any]) -> tuple:
 
 
 @router.post("/{token}/chart-data")
-def public_chart_data(token: str, body: Annotated[dict[str, Any] | None, Body()] = None):
+def public_chart_data(token: str, request: Request, body: Annotated[dict[str, Any] | None, Body()] = None):
     """Data of the dashboard's charts; a requested chart must be one of them."""
-    _link, dashboard, connector = _resolve(token)
+    _link, dashboard, connector = _resolve(token, request)
     stored = {_chart_key(c.model_dump()): c for c in dashboard.charts}
     requested = (body or {}).get("charts") or []
     matched = [stored.get(_chart_key(c)) if isinstance(c, dict) else None for c in requested]
@@ -117,12 +141,12 @@ def public_chart_data(token: str, body: Annotated[dict[str, Any] | None, Body()]
 
 
 @router.post("/{token}/kpi")
-def public_kpi(token: str):
-    _link, dashboard, connector = _resolve(token)
+def public_kpi(token: str, request: Request):
+    _link, dashboard, connector = _resolve(token, request)
     return kpi_values(dashboard, connector)
 
 
 @router.post("/{token}/export/excel")
-def public_excel(token: str):
-    _link, dashboard, connector = _resolve(token)
+def public_excel(token: str, request: Request):
+    _link, dashboard, connector = _resolve(token, request)
     return excel_response(dashboard, connector)

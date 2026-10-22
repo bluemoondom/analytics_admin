@@ -61,13 +61,15 @@ def _asset_version(directory: str) -> str:
     return digest.hexdigest()[:10]
 
 
+templates = Jinja2Templates(directory="src/web/templates")
+
+
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""
     settings = get_settings()
     app = FastAPI(title=settings.APP_TITLE)
 
     app.mount("/static", StaticFiles(directory="src/web/static"), name="static")
-    templates = Jinja2Templates(directory="src/web/templates")
     templates.env.globals["asset_version"] = _asset_version("src/web/static")
 
     run_migrations()

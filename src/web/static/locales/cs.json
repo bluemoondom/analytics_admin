@@ -377,7 +377,7 @@
   "switch_to_register": "Nemáte účet? Zaregistrujte se",
   "switch_to_login": "Máte účet? Přihlaste se",
   "register_success_message": "Registrace úspěšná. Ověřte email kliknutím na odkaz. Po ověření se stanete administrátorem.",
-  "magic_link_debug_label": "Odkaz (prototyp):",
+  "magic_link_debug_label": "Přihlašovací odkaz (SHOW_MAGIC_LINK):",
   "login_error_generic": "Nepodařilo se odeslat odkaz.",
   "connectors_page_heading": "Správa konektorů",
   "connector_name_label": "Název konektoru",
@@ -630,5 +630,12 @@
   "public_view_note_expires": "Veřejný náhled, jen pro čtení · platí do {date}",
   "public_read_only_error": "Veřejný náhled je jen pro čtení.",
   "public_link_invalid_title": "Odkaz neplatí",
-  "public_link_invalid_text": "Odkaz na dashboard mohl vypršet nebo ho autor zrušil, případně byl dashboard smazán. Požádejte autora o nový odkaz."
+  "public_link_invalid_text": "Odkaz na dashboard mohl vypršet nebo ho autor zrušil, případně byl dashboard smazán. Požádejte autora o nový odkaz.",
+  "login_link_sent": "Pokud e-mail patří k účtu, poslali jsme na něj přihlašovací odkaz.",
+  "register_link_sent": "Na e-mail jsme poslali odkaz. Otevřete ho a dokončete přihlášení.",
+  "magic_link_confirm_title": "Přihlášení",
+  "magic_link_confirm_text": "Pro dokončení přihlášení klikněte na tlačítko.",
+  "magic_link_confirm_button": "Přihlásit se",
+  "magic_link_invalid": "Odkaz je neplatný nebo už vypršel. Požádejte o nový.",
+  "magic_link_back": "Zpět na přihlášení"
 }

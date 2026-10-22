@@ -377,7 +377,7 @@
   "switch_to_register": "Pas encore de compte ? Inscrivez-vous",
   "switch_to_login": "Déjà un compte ? Connectez-vous",
   "register_success_message": "Inscription réussie. Vérifiez votre email en cliquant sur le lien. Après vérification vous deviendrez administrateur.",
-  "magic_link_debug_label": "Lien (prototype) :",
+  "magic_link_debug_label": "Lien de connexion (SHOW_MAGIC_LINK) :",
   "login_error_generic": "Échec de l'envoi du lien.",
   "connectors_page_heading": "Gestion des connecteurs",
   "connector_name_label": "Nom du connecteur",
@@ -630,5 +630,12 @@
   "public_view_note_expires": "Vue publique, lecture seule · valable jusqu'au {date}",
   "public_read_only_error": "La vue publique est en lecture seule.",
   "public_link_invalid_title": "Le lien n'est pas valide",
-  "public_link_invalid_text": "Le lien du tableau de bord a peut-être expiré ou été révoqué par son auteur, ou le tableau de bord a été supprimé. Demandez un nouveau lien à l'auteur."
+  "public_link_invalid_text": "Le lien du tableau de bord a peut-être expiré ou été révoqué par son auteur, ou le tableau de bord a été supprimé. Demandez un nouveau lien à l'auteur.",
+  "login_link_sent": "Si l'e-mail correspond à un compte, un lien de connexion y a été envoyé.",
+  "register_link_sent": "Un lien a été envoyé à l'e-mail. Ouvrez-le pour terminer la connexion.",
+  "magic_link_confirm_title": "Connexion",
+  "magic_link_confirm_text": "Cliquez sur le bouton pour terminer la connexion.",
+  "magic_link_confirm_button": "Se connecter",
+  "magic_link_invalid": "Le lien est invalide ou a expiré. Demandez-en un nouveau.",
+  "magic_link_back": "Retour à la connexion"
 }

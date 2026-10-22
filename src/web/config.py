@@ -117,6 +117,17 @@ class Settings:
         self.API_MAX_REQUESTS_PER_MINUTE: int = int(
             os.getenv("API_MAX_REQUESTS_PER_MINUTE", "0")
         )
+        # Reverse proxies whose X-Forwarded-For / X-Real-IP headers are trusted
+        # (addresses or networks, comma separated). Empty: the headers are
+        # ignored and the address of the connection is used.
+        self.TRUSTED_PROXY_IPS: list[str] = [
+            ip.strip() for ip in (os.getenv("TRUSTED_PROXY_IPS") or "").split(",") if ip.strip()
+        ]
+        # Requests per minute to one public dashboard link from one address
+        # (opening the dashboard takes about 5 requests). 0 = unlimited.
+        self.PUBLIC_LINK_MAX_REQUESTS_PER_MINUTE: int = int(
+            os.getenv("PUBLIC_LINK_MAX_REQUESTS_PER_MINUTE", "120")
+        )
         self.API_LOG_PATH: str = os.getenv(
             "API_LOG_PATH",
             os.path.join(os.path.dirname(__file__), "..", "..", "logs", "api_access.log"),
@@ -144,8 +155,11 @@ class Settings:
         self.LOCALHOST_MODE: bool = os.getenv("LOCALHOST_MODE", "false").lower() in ("1", "true", "yes")
         self.REGISTRATION_ENABLED: bool = os.getenv("REGISTRATION_ENABLED", "true").lower() in ("1", "true", "yes")
 
-        # Control whether magic link is shown in API response
-        self.SHOW_MAGIC_LINK: bool = os.getenv("SHOW_MAGIC_LINK", "true").lower() in ("1", "true", "yes")
+        # SHOW_MAGIC_LINK=true: the login page shows the sign-in link instead of
+        # e-mailing it (to set up users without SMTP). Anyone could then sign in
+        # as any user, so never enable it on a server reachable by others.
+        # false (default): the link is only e-mailed, never returned.
+        self.SHOW_MAGIC_LINK: bool = os.getenv("SHOW_MAGIC_LINK", "false").lower() in ("1", "true", "yes")
 
         # SMTP settings for magic-link emails
         self.SMTP_HOST: str = os.getenv("SMTP_HOST", "")

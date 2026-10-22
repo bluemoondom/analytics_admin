@@ -140,6 +140,13 @@ The author of a dashboard can publish it read-only for people without an account
 - Prevention of duplicate concurrent sessions
 - Automatic IP blocking on the public API: an invalid API key blocks the client IP immediately, and repeated `400 Bad Request`, `403` or `404` responses within a short time window lead to a persistent block (threshold set by `API_BLOCKLIST_403_404_THRESHOLD`)
 - Shared views are served through the recipient connector's own API tenant and key; keys are never shared between connectors, and writing (PUT) through a shared view is reserved for its author
+- Ownership: every dashboard, view and connector belongs to the user who created it. Dashboards can only be created on and read through their owner's own connectors, also by administrators; editing never changes a dashboard's owner or connector
+- Sign-in links are single-use and are confirmed with a button on a separate page, so mail scanners that open links do not use them up. Login and registration answer with the same message whether the e-mail exists or not. `REGISTRATION_ENABLED=false` closes registration; `SHOW_MAGIC_LINK=true` shows the link on the login page instead of sending an e-mail (for setting up users, never on an internet-facing server)
+- SQLite connectors may only open existing database files (never create them), never the application's own folder or metadata database, and only inside `SQLITE_ALLOWED_DIRS` when that is set; network (UNC) paths are refused
+- MSSQL connection values are quoted so a connector field cannot inject other ODBC options, and only SQL Server ODBC drivers are accepted
+- Encrypted connections are preferred: MSSQL connects with a verified certificate first, then encrypted with an untrusted certificate, and only then unencrypted. **Test connection** on the connector says whether the connection is encrypted and warns when it is not (also for PostgreSQL and MySQL)
+- `X-Forwarded-For` / `X-Real-IP` are only trusted from reverse proxies listed in `TRUSTED_PROXY_IPS`, so IP allowlists, blocklists and rate limits cannot be bypassed with a forged header
+- Public dashboard links have their own rate limit per link and client address (`PUBLIC_LINK_MAX_REQUESTS_PER_MINUTE`)
 
 ---
 
@@ -195,8 +202,6 @@ Chart.js and jsPDF are served from `src/web/static/vendor` (see the README there
 - scikit-learn >= 1.3.0
 - matplotlib >= 3.7.0
 - seaborn >= 0.12.0
-- jupyter >= 1.0.0
-- notebook >= 6.5.0
 
 **Web**
 - fastapi >= 0.95.0

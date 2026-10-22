@@ -299,7 +299,9 @@
         const data = { ...getFormData(), connector_id: id || undefined };
         try {
           const result = await api('POST', '/test', data);
-          showTestResult(result.message || t('test_connector_ok', {}) || 'Připojení bylo úspěšné.', 'success');
+          // An unencrypted connection works, but is shown as a warning.
+          showTestResult(result.message || t('test_connector_ok', {}) || 'Připojení bylo úspěšné.',
+            result.encryption === 'plain' ? 'warning' : 'success');
         } catch (err) {
           showTestResult(err.message || t('test_connector_error', {}) || 'Připojení selhalo.', 'error');
         } finally {

@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block body %}
+<main class="login-page">
+  <div class="login-card magic-link-card">
+    <h1 data-i18n="magic_link_confirm_title">Přihlášení</h1>
+    {% if token %}
+    <p data-i18n="magic_link_confirm_text">Pro dokončení přihlášení klikněte na tlačítko.</p>
+    <form method="post" action="/auth/magic-link" class="login-form">
+      <input type="hidden" name="token" value="{{ token }}" />
+      <button type="submit" class="btn primary" id="magic-link-submit" data-i18n="magic_link_confirm_button">Přihlásit se</button>
+    </form>
+    {% else %}
+    <p data-i18n="magic_link_invalid">Odkaz je neplatný nebo už vypršel. Požádejte o nový.</p>
+    <p><a href="/login" data-i18n="magic_link_back">Zpět na přihlášení</a></p>
+    {% endif %}
+  </div>
+</main>
+{% endblock %}

@@ -377,7 +377,7 @@
   "switch_to_register": "Don't have an account? Register",
   "switch_to_login": "Already have an account? Log in",
   "register_success_message": "Registration successful. Verify your email by clicking the link. After verification you will become an administrator.",
-  "magic_link_debug_label": "Link (prototype):",
+  "magic_link_debug_label": "Sign-in link (SHOW_MAGIC_LINK):",
   "login_error_generic": "Failed to send link.",
   "connectors_page_heading": "Connector management",
   "connector_name_label": "Connector name",
@@ -630,5 +630,12 @@
   "public_view_note_expires": "Public view, read-only · valid until {date}",
   "public_read_only_error": "The public view is read-only.",
   "public_link_invalid_title": "The link is not valid",
-  "public_link_invalid_text": "The dashboard link may have expired or been revoked by its author, or the dashboard was deleted. Ask the author for a new link."
+  "public_link_invalid_text": "The dashboard link may have expired or been revoked by its author, or the dashboard was deleted. Ask the author for a new link.",
+  "login_link_sent": "If the e-mail belongs to an account, a sign-in link has been sent to it.",
+  "register_link_sent": "A link has been sent to the e-mail. Open it to finish signing in.",
+  "magic_link_confirm_title": "Sign in",
+  "magic_link_confirm_text": "Click the button to finish signing in.",
+  "magic_link_confirm_button": "Sign in",
+  "magic_link_invalid": "The link is invalid or has expired. Request a new one.",
+  "magic_link_back": "Back to sign-in"
 }

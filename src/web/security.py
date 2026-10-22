@@ -21,6 +21,7 @@ CSRF_SAFE_METHODS = {"GET", "HEAD", "OPTIONS", "TRACE"}
 CSRF_EXEMPT_PATHS = {
     "/auth/login",
     "/auth/register",
+    "/auth/magic-link",
 }
 
 

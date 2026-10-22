@@ -12,8 +12,54 @@ import datetime
 import decimal
 import os
 import sqlite3
+from pathlib import Path
 
 from src.web.dialects.base import SourceDialect
+
+
+# The application's own folder (src/web/dialects -> project root).
+_APP_ROOT = Path(__file__).resolve().parents[3]
+
+
+class SQLitePathError(ValueError):
+    """The SQLite file of a connector is not allowed (message for the user)."""
+
+
+def _same_or_inside(path: Path, folder: Path) -> bool:
+    p, f = os.path.normcase(str(path)), os.path.normcase(str(folder))
+    return p == f or p.startswith(f.rstrip("\\/") + os.sep)
+
+
+def validate_sqlite_path(raw: str | None) -> Path:
+    """Resolve and check the SQLite file of a connector.
+
+    Refused: network paths (UNC, which on Windows would also send the service
+    account's credentials to that server), the application's own metadata
+    database and anything in the application's folder, files outside
+    ``SQLITE_ALLOWED_DIRS`` when that setting is used, and files that do not
+    exist (a connector never creates files).
+    """
+    from src.web.config import get_settings
+
+    text = (raw or "").strip()
+    if not text:
+        raise SQLitePathError("Zadejte cestu k souboru SQLite.")
+    if text.startswith(("\\\\", "//")) or text.lower().startswith(("file:", "\\\\?\\unc")):
+        raise SQLitePathError("Síťové cesty a URI nejsou pro SQLite povolené.")
+    path = Path(os.path.realpath(os.path.abspath(text)))
+    if str(path).startswith(("\\\\", "//")):
+        raise SQLitePathError("Síťové cesty nejsou pro SQLite povolené.")
+    settings = get_settings()
+    metadata = Path(os.path.realpath(os.path.abspath(settings.DASHBOARD_DB_PATH)))
+    blocked = [metadata] + [Path(str(metadata) + suffix) for suffix in ("-wal", "-shm", "-journal")]
+    if any(os.path.normcase(str(path)) == os.path.normcase(str(b)) for b in blocked) or _same_or_inside(path, _APP_ROOT):
+        raise SQLitePathError("Tento soubor nelze použít: patří aplikaci (její vlastní databáze nebo složka).")
+    allowed = [d.strip() for d in (os.getenv("SQLITE_ALLOWED_DIRS") or "").replace(";", ",").split(",") if d.strip()]
+    if allowed and not any(_same_or_inside(path, Path(os.path.realpath(os.path.abspath(d)))) for d in allowed):
+        raise SQLitePathError("Soubor SQLite musí ležet v povolené složce (SQLITE_ALLOWED_DIRS).")
+    if not path.is_file():
+        raise SQLitePathError("Soubor SQLite neexistuje.")
+    return path
 
 
 class SQLiteDialect(SourceDialect):
@@ -24,9 +70,13 @@ class SQLiteDialect(SourceDialect):
     @contextlib.contextmanager
     def connect(self, connector=None, settings=None):
         # SQLite databases are files; host/port are ignored.  The path is read
-        # from ``db_name`` (e.g. "/data/my.sqlite3").
-        path = os.path.abspath(connector.db_name if connector else settings.DB_NAME)
-        conn = sqlite3.connect(path)
+        # from ``db_name`` (e.g. "/data/my.sqlite3"). It is checked on every
+        # connection and opened without creating a missing file.
+        try:
+            path = validate_sqlite_path(connector.db_name if connector else settings.DB_NAME)
+        except SQLitePathError as exc:
+            raise sqlite3.OperationalError(str(exc)) from exc
+        conn = sqlite3.connect(path.as_uri() + "?mode=rw", uri=True)
         conn.row_factory = None
         try:
             yield conn

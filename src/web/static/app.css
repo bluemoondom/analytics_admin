@@ -3470,3 +3470,22 @@ body.theme-bg-black .dpublic-url input { background: #1f2937; color: #f3f4f6; bo
   .dpublic-row { flex-wrap: wrap; }
   .dpublic-actions { flex-direction: row; }
 }
+
+/* Sign-in: invalid link message and the confirmation page */
+.login-error {
+  background: #fef2f2;
+  border: 1px solid #fca5a5;
+  border-radius: var(--radius);
+  padding: 0.75rem;
+  color: #991b1b;
+}
+.magic-link-card .login-form { margin-top: 1rem; }
+.magic-link-card .btn.primary { width: 100%; }
+
+/* Result of "Test connection" (incl. whether the connection is encrypted) */
+.connector-test-result { margin-top: 0.75rem; padding: 0.6rem 0.75rem; border-radius: var(--radius); border-left: 3px solid var(--muted); background: #f9fafb; font-size: 0.88rem; }
+.connector-test-result.hidden { display: none; }
+.connector-test-result.success { border-left-color: #16a34a; background: #f0fdf4; color: #166534; }
+.connector-test-result.warning { border-left-color: #d97706; background: #fffbeb; color: #92400e; }
+.connector-test-result.error { border-left-color: #dc2626; background: #fef2f2; color: #991b1b; }
+body.theme-bg-black .connector-test-result.warning { background: rgba(245, 158, 11, 0.15); color: #fcd34d; }

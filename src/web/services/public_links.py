@@ -352,6 +352,8 @@ def resolve(token: str) -> tuple[dict[str, Any], Dashboard, Connector | None] | 
     connector = users.get_connector_by_id(dashboard.connector_id) if dashboard.connector_id else None
     if connector is None and owner.connector_id:
         connector = users.get_connector_by_id(owner.connector_id)
+    if connector is None or connector.user_id != owner.id:
+        return None  # never read through someone else's connector
     return link, dashboard, connector
 
 

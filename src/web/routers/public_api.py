@@ -233,16 +233,10 @@ def _json_default(value: Any) -> Any:
 
 
 def _get_client_ip(request: Request) -> str:
-    """Return the most reliable client IP from request headers."""
-    forwarded = request.headers.get("X-Forwarded-For")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    real_ip = request.headers.get("X-Real-Ip")
-    if real_ip:
-        return real_ip.strip()
-    if request.client:
-        return request.client.host
-    return "unknown"
+    """Client address; proxy headers only from TRUSTED_PROXY_IPS (see client_ip)."""
+    from src.web.client_ip import client_ip
+
+    return client_ip(request)
 
 
 def _resolve_view_connector(

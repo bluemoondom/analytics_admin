@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Annotated
+from urllib.parse import parse_qs
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -24,6 +26,7 @@ from src.web.services.email_service import send_magic_link_email
 from src.web.services.user_storage import UserStorage
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+logger = logging.getLogger(__name__)
 
 
 class LoginRequest(BaseModel):
@@ -49,48 +52,58 @@ class MagicLinkResponse(BaseModel):
     message: str
 
 
+# Same answer whether or not the e-mail has an account, so the form cannot be
+# used to find out who uses the application.
+LOGIN_SENT = "If the e-mail belongs to an account, a sign-in link has been sent to it."
+REGISTER_SENT = "A link has been sent to the e-mail. Open it to finish signing in."
+
+
+def _deliver(email: str, url: str, subject: str) -> str:
+    """E-mail the link, or return it when SHOW_MAGIC_LINK is on (then no e-mail is sent)."""
+    if get_settings().SHOW_MAGIC_LINK:
+        return url
+    if not send_magic_link_email(email, url, subject=subject):
+        logger.error("Sign-in e-mail to %s could not be sent (check the SMTP settings).", email)
+    return ""
+
+
 @router.post("/login", response_model=MagicLinkResponse)
 def login(request: LoginRequest):
-    """Create a magic link, send it by email, and also return it for verification."""
-    _token, url = create_magic_link(request.email)
-    email_sent = send_magic_link_email(
-        request.email,
-        url,
-        subject=f"Login link – {get_settings().APP_TITLE}",
-    )
-    message = "A login link has been sent to your email."
-    myurl = ""
-    if not email_sent:
-        message = "Login link generated (email was not sent – please check the SMTP configuration)."
-        myurl = url 
-    return MagicLinkResponse(
-        email=request.email,
-        magic_link=myurl,
-        message=message,
-    )
+    """Send a sign-in link (or show it, with SHOW_MAGIC_LINK=true)."""
+    email = (request.email or "").strip()
+    url = ""
+    try:
+        _token, link = create_magic_link(email)
+        url = _deliver(email, link, f"Login link – {get_settings().APP_TITLE}")
+    except HTTPException:
+        pass  # unknown or inactive account: the same answer as for a valid one
+    return MagicLinkResponse(email=email, magic_link=url, message=LOGIN_SENT)
 
 
 @router.post("/register", response_model=MagicLinkResponse)
 def register(request: RegisterRequest):
-    """Create a pending new_admin account, send verification email, and return the link."""
+    """Create a pending account and send the verification link.
+
+    For an e-mail that already has an account a sign-in link is sent instead;
+    the answer is the same in both cases.
+    """
     if not get_settings().REGISTRATION_ENABLED:
         raise HTTPException(status_code=403, detail="Registration is not enabled.")
-    _user, _token, url = register_user(request.email)
-    email_sent = send_magic_link_email(
-        request.email,
-        url,
-        subject=f"Registration verification – {get_settings().APP_TITLE}",
-    )
-    message = "Registration successful. A verification link has been sent to your email."
-    myurl = ""
-    if not email_sent:
-        message = "Registration successful (email was not sent – please check the SMTP configuration)."
-        myurl = url
-    return MagicLinkResponse(
-        email=request.email,
-        magic_link=myurl,
-        message=message,
-    )
+    email = (request.email or "").strip()
+    if not email or "@" not in email:
+        raise HTTPException(status_code=400, detail="Invalid e-mail.")
+    url = ""
+    try:
+        if UserStorage().get_user_by_email(email) is None:
+            _user, _token, link = register_user(email)
+            subject = f"Registration verification – {get_settings().APP_TITLE}"
+        else:
+            _token, link = create_magic_link(email)
+            subject = f"Login link – {get_settings().APP_TITLE}"
+        url = _deliver(email, link, subject)
+    except HTTPException:
+        pass
+    return MagicLinkResponse(email=email, magic_link=url, message=REGISTER_SENT)
 
 
 def _is_localhost(request: Request) -> bool:
@@ -98,45 +111,45 @@ def _is_localhost(request: Request) -> bool:
     return host.startswith(("127.0.0.1", "localhost", "[::1]"))
 
 
-@router.get("/magic-link")
-def magic_link_callback(token: str, request: Request):
-    """Consume a magic link token, set the session cookie and redirect to app."""
-    try:
-        session_token = consume_magic_link(token)
-    except HTTPException:
-        # Invalid/expired token: redirect back to login with an error hint.
-        return RedirectResponse(url="/login?error=invalid", status_code=302)
-    response = RedirectResponse(url="/", status_code=302)
-    set_session_cookie(response, session_token, secure=not _is_localhost(request))
+def _confirm_page(request: Request, token: str):
+    """Page with a sign-in button for the link from the e-mail.
+
+    Opening the link does not use it up: mail security scanners open links in
+    e-mails, which used to spend the single-use token before the user clicked.
+    The token is used only by the POST of the button.
+    """
+    from src.web.main import templates
+
+    response = templates.TemplateResponse(
+        request, "magic_link.html", {"title": get_settings().APP_TITLE, "token": token}
+    )
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    response.headers["X-Robots-Tag"] = "noindex, nofollow"
     return response
 
 
-@router.get("/magic-link-redirect")
-def magic_link_redirect_page(token: str, request: Request):
-    """Consume the magic link and redirect to app using an HTML page.
+@router.get("/magic-link", response_class=HTMLResponse)
+def magic_link_page(request: Request, token: str = ""):
+    return _confirm_page(request, token)
 
-    This works around mail clients / browsers that refuse to follow a 302
-    redirect from a clicked link. The page refreshes itself to the app root
-    after the cookie is set.
-    """
+
+@router.get("/magic-link-redirect", response_class=HTMLResponse)
+def magic_link_redirect_page(request: Request, token: str = ""):
+    """Link sent in e-mails; shows the sign-in button."""
+    return _confirm_page(request, token)
+
+
+@router.post("/magic-link")
+async def magic_link_sign_in(request: Request):
+    """Use the token from the confirmation page, set the session cookie and open the app."""
+    body = (await request.body()).decode("utf-8", errors="ignore")
+    token = (parse_qs(body).get("token") or [""])[0]
     try:
         session_token = consume_magic_link(token)
     except HTTPException:
-        return RedirectResponse(url="/login?error=invalid", status_code=302)
-    html = (
-        "<!DOCTYPE html>\n"
-        "<html lang=\"en\">\n"
-        "<head>"
-        "<meta charset=\"UTF-8\" />"
-        "<meta http-equiv=\"refresh\" content=\"0;url=/\" />"
-        "<title>Signing in…</title>"
-        "</head>\n"
-        "<body>\n"
-        "  <p>Signing in…</p>\n"
-        "</body>\n"
-        "</html>"
-    )
-    response = HTMLResponse(content=html)
+        return RedirectResponse(url="/login?error=invalid", status_code=303)
+    response = RedirectResponse(url="/", status_code=303)
     set_session_cookie(response, session_token, secure=not _is_localhost(request))
     return response
 

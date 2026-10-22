@@ -19,7 +19,7 @@ from src.web.models.dashboard import (
     DataQueryRequest,
     ExpandedChartUpdate,
 )
-from src.web.models.user import User, UserRole
+from src.web.models.user import User
 from src.web.services import dashboard_sharing as sharing
 from src.web.services import public_links
 from src.web.services.export import export_pivot_to_excel, export_table_to_excel
@@ -54,21 +54,44 @@ def _user_connector(user: User) -> Any:
 
 
 def _dashboard_connector(dashboard: Dashboard) -> Any:
-    """Return the connector stored for a specific dashboard, if any."""
+    """Return the connector stored for a dashboard, if it belongs to the dashboard's owner.
+
+    A dashboard never reads through someone else's connector, even if such an
+    id ended up in its definition.
+    """
     if dashboard.connector_id is None:
         return None
-    return UserStorage().get_connector_by_id(dashboard.connector_id)
+    connector = UserStorage().get_connector_by_id(dashboard.connector_id)
+    if connector is None or connector.user_id != dashboard.user_id:
+        return None
+    return connector
+
+
+def _owned_connector_id(user: User, connector_id: Any) -> int | None:
+    """The connector id if the user owns that connector, else the active connector."""
+    if connector_id:
+        try:
+            connector = UserStorage().get_connector_by_id(int(connector_id))
+        except (TypeError, ValueError):
+            connector = None
+        if connector is not None and connector.user_id == user.id:
+            return connector.id
+    return user.connector_id
 
 
 def _query_connector(user: User, connector_id: int | None) -> Any:
     """Connector for an open dashboard: its own connector when it belongs to the user.
 
     Dashboards keep the connector they were created (or accepted) with; the
-    active connector is used for new dashboards and as a fallback.
+    active connector is used for new dashboards and as a fallback. Every user,
+    admins included, reads only through their own connectors.
     """
     if connector_id:
-        connector = UserStorage().get_connector_by_id(int(connector_id))
-        if connector is not None and (connector.user_id == user.id or user.role == UserRole.ADMIN):
+        try:
+            connector = UserStorage().get_connector_by_id(int(connector_id))
+        except (TypeError, ValueError):
+            connector = None
+        if connector is not None and connector.user_id == user.id:
             return connector
     return _user_connector(user)
 
@@ -278,10 +301,10 @@ def create_dashboard(
     storage: StorageDep,
     user: Annotated[User, Depends(require_user)],
 ):
-    """Create or update a dashboard."""
+    """Create a dashboard of the current user on one of the user's connectors."""
+    dashboard.id = None
     dashboard.user_id = user.id
-    if dashboard.connector_id is None:
-        dashboard.connector_id = user.connector_id
+    dashboard.connector_id = _owned_connector_id(user, dashboard.connector_id)
     return storage.save_dashboard(dashboard)
 
 
@@ -327,9 +350,9 @@ def update_dashboard(
     if not existing:
         raise HTTPException(status_code=404, detail="Dashboard not found")
     dashboard.id = dashboard_id
-    if user.role != UserRole.ADMIN:
-        dashboard.user_id = existing.user_id
-        dashboard.connector_id = existing.connector_id
+    # Owner and connector never change through an update (for admins neither).
+    dashboard.user_id = existing.user_id
+    dashboard.connector_id = existing.connector_id
     saved = storage.save_dashboard(dashboard)
     sharing.on_dashboard_saved(saved)
     return saved

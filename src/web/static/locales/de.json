@@ -377,7 +377,7 @@
   "switch_to_register": "Noch kein Konto? Registrieren",
   "switch_to_login": "Bereits ein Konto? Anmelden",
   "register_success_message": "Registrierung erfolgreich. Bestätigen Sie Ihre E-Mail-Adresse durch Klick auf den Link. Nach der Bestätigung werden Sie Administrator.",
-  "magic_link_debug_label": "Link (Prototyp):",
+  "magic_link_debug_label": "Anmeldelink (SHOW_MAGIC_LINK):",
   "login_error_generic": "Link konnte nicht gesendet werden.",
   "connectors_page_heading": "Connectoren-Verwaltung",
   "connector_name_label": "Connector-Name",
@@ -630,5 +630,12 @@
   "public_view_note_expires": "Öffentliche Ansicht, nur lesen · gültig bis {date}",
   "public_read_only_error": "Die öffentliche Ansicht ist schreibgeschützt.",
   "public_link_invalid_title": "Der Link ist nicht gültig",
-  "public_link_invalid_text": "Der Dashboard-Link ist möglicherweise abgelaufen oder wurde vom Autor widerrufen, oder das Dashboard wurde gelöscht. Bitten Sie den Autor um einen neuen Link."
+  "public_link_invalid_text": "Der Dashboard-Link ist möglicherweise abgelaufen oder wurde vom Autor widerrufen, oder das Dashboard wurde gelöscht. Bitten Sie den Autor um einen neuen Link.",
+  "login_link_sent": "Falls die E-Mail zu einem Konto gehört, wurde ein Anmeldelink an sie gesendet.",
+  "register_link_sent": "Ein Link wurde an die E-Mail gesendet. Öffnen Sie ihn, um die Anmeldung abzuschließen.",
+  "magic_link_confirm_title": "Anmeldung",
+  "magic_link_confirm_text": "Klicken Sie auf die Schaltfläche, um die Anmeldung abzuschließen.",
+  "magic_link_confirm_button": "Anmelden",
+  "magic_link_invalid": "Der Link ist ungültig oder abgelaufen. Fordern Sie einen neuen an.",
+  "magic_link_back": "Zurück zur Anmeldung"
 }

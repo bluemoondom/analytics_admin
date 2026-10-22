@@ -85,6 +85,30 @@ def _connector_from_payload(payload: dict[str, Any]) -> Connector:
     )
 
 
+def _check_connector(connector: Connector) -> None:
+    """Refuse settings that would reach beyond the user's own database.
+
+    SQLite: no network paths, nothing of the application itself (its metadata
+    database), only existing files. SQL Server: only SQL Server ODBC drivers.
+    """
+    if connector.db_type == "sqlite":
+        from src.web.dialects.sqlite import SQLitePathError, validate_sqlite_path
+
+        try:
+            validate_sqlite_path(connector.db_name)
+        except SQLitePathError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+    elif connector.db_type == "mssql":
+        import pyodbc
+
+        from src.web.dialects.mssql import validate_driver
+
+        try:
+            validate_driver(connector.db_driver)
+        except pyodbc.Error as exc:
+            raise HTTPException(status_code=400, detail=str(exc.args[-1] if exc.args else exc)) from exc
+
+
 @router.get("/", response_model=list[dict[str, Any]])
 def list_connectors(user: Annotated[User, Depends(require_user)]):
     """Return connectors belonging to the current user."""
@@ -112,10 +136,7 @@ def _ensure_connector_owner(connector_id: int, user: User) -> Connector:
     if not connector:
         raise HTTPException(status_code=404, detail="Connector not found")
     if connector.user_id != user.id:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Connector not found (connector_user_id={connector.user_id}, current_user_id={user.id})",
-        )
+        raise HTTPException(status_code=404, detail="Connector not found")
     return connector
 
 
@@ -128,6 +149,7 @@ def create_connector(
     connector = _connector_from_payload(payload)
     if not connector.name:
         raise HTTPException(status_code=400, detail="Connector name is required")
+    _check_connector(connector)
     connector.user_id = user.id
     created = UserStorage().create_connector(connector)
     return _connector_response(created)
@@ -143,6 +165,7 @@ def update_connector(
     storage = UserStorage()
     existing = _ensure_connector_owner(connector_id, user)
     updated = _connector_from_payload(payload)
+    _check_connector(updated)
     updated.id = connector_id
     updated.user_id = user.id
     # Keep existing secrets when the UI sends an empty or masked value.
@@ -210,8 +233,9 @@ def test_connector_connection(
             connector.db_password = existing.db_password
         if not connector.api_key or _mask_secret(existing.api_key) == connector.api_key:
             connector.api_key = existing.api_key
-    elif not connector.db_password:
+    elif not connector.db_password and connector.db_type != "sqlite":
         raise HTTPException(status_code=400, detail="Database password is required")
+    _check_connector(connector)
 
     try:
         with _conn_with_cursor(connector) as (_conn, cur):
@@ -233,4 +257,48 @@ def test_connector_connection(
             detail = f"Chyba připojení k databázi: {message}"
         raise HTTPException(status_code=400, detail=detail) from exc
 
-    return {"ok": True, "message": "Připojení k databázi bylo úspěšné."}
+    encryption = _encryption_status(connector)
+    message = "Připojení k databázi bylo úspěšné."
+    if encryption in _ENCRYPTION_TEXT:
+        message += " " + _ENCRYPTION_TEXT[encryption]
+    return {"ok": True, "message": message, "encryption": encryption}
+
+
+_ENCRYPTION_TEXT = {
+    "verified": "Spojení je šifrované a certifikát serveru je ověřený.",
+    "encrypted": "Spojení je šifrované, certifikát serveru ale nejde ověřit (např. vlastní certifikát serveru).",
+    "plain": "Spojení NENÍ šifrované: server šifrování nepodporuje, data i heslo jdou po síti čitelně.",
+    "local": "Databáze je soubor na serveru aplikace, po síti se nic neposílá.",
+}
+
+
+def _encryption_status(connector: Connector) -> str | None:
+    """How the connection of the test was protected ("verified", "encrypted", "plain", "local")."""
+    db_type = connector.db_type or "mssql"
+    if db_type == "sqlite":
+        return "local"
+    try:
+        if db_type == "mssql":
+            from src.web.dialects.mssql import encryption_mode
+
+            mode = encryption_mode(connector)
+            if mode == "plain":
+                # The server may still enforce encryption on its side.
+                with _conn_with_cursor(connector) as (_conn, cur):
+                    cur.execute("SELECT CONVERT(varchar(10), CONNECTIONPROPERTY('encrypt_option'))")
+                    row = cur.fetchone()
+                if row and str(row[0]).upper() == "TRUE":
+                    return "encrypted"
+            return mode
+        with _conn_with_cursor(connector) as (_conn, cur):
+            if db_type == "postgresql":
+                cur.execute("SELECT ssl FROM pg_stat_ssl WHERE pid = pg_backend_pid()")
+                row = cur.fetchone()
+                return "encrypted" if row and row[0] else "plain"
+            if db_type == "mysql":
+                cur.execute("SHOW SESSION STATUS LIKE 'Ssl_cipher'")
+                row = cur.fetchone()
+                return "encrypted" if row and row[1] else "plain"
+    except Exception:
+        return None
+    return None

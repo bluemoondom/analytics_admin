@@ -130,16 +130,17 @@
         });
         const data = await response.json();
         if (response.ok) {
-          const label = window.I18n && window.I18n.t ? window.I18n.t("magic_link_debug_label") : "Odkaz (prototyp):";
-          message.innerHTML = `
-            <div class="login-success">
-              <p>${escapeHtml(data.message)}</p>
-              <p class="magic-link-debug"><strong>${escapeHtml(label)}</strong> <br/>
-                <a href="${escapeHtml(data.magic_link)}" id="magic-link">
-                  <code>${escapeHtml(data.magic_link)}</code>
-                </a>
-              </p>
-            </div>`;
+          const tr = (key, fallback) => (window.I18n && window.I18n.t ? window.I18n.t(key) : fallback);
+          const text = mode === "login"
+            ? tr("login_link_sent", data.message || "")
+            : tr("register_link_sent", data.message || "");
+          // The link itself is returned only with SHOW_MAGIC_LINK=true (setting up users).
+          const link = data.magic_link
+            ? `<p class="magic-link-debug"><strong>${escapeHtml(tr("magic_link_debug_label", "Odkaz:"))}</strong> <br/>
+                <a href="${escapeHtml(data.magic_link)}" id="magic-link"><code>${escapeHtml(data.magic_link)}</code></a>
+              </p>`
+            : "";
+          message.innerHTML = `<div class="login-success"><p>${escapeHtml(text)}</p>${link}</div>`;
         } else {
           const generic = window.I18n && window.I18n.t ? window.I18n.t("login_error_generic") : "Nepodařilo se odeslat odkaz.";
           message.textContent = data.detail || generic;
@@ -159,10 +160,21 @@
         .replace(/'/g, "&#039;");
     }
 
+    // Back from an invalid or used sign-in link.
+    function showLinkError() {
+      if (new URLSearchParams(window.location.search).get("error") !== "invalid") return;
+      const text = window.I18n && window.I18n.t ? window.I18n.t("magic_link_invalid") : "Odkaz je neplatný nebo už vypršel.";
+      message.innerHTML = `<div class="login-error">${escapeHtml(text)}</div>`;
+    }
+
     if (window.I18n && window.I18n.isReady && window.I18n.isReady()) {
       updateModeLabels();
+      showLinkError();
     } else if (window.I18n && window.I18n.onChange) {
       window.I18n.onChange(updateModeLabels);
+      const off = window.I18n.onChange(() => { off(); showLinkError(); });
+    } else {
+      showLinkError();
     }
   }
 
