@@ -1,7 +1,29 @@
 (function () {
   const t = window.I18n ? window.I18n.t : (k, p) => `{${k}}`;
 
-  const API = '/api/dashboards';
+  // A public read-only link (/public/dashboard/<token>) renders this page without signing in;
+  // its requests go to the public API, which only serves the stored dashboard.
+  const PUBLIC_TOKEN = (document.body && document.body.dataset.publicToken) || '';
+  const API = PUBLIC_TOKEN ? '/api/public/dashboards/' + encodeURIComponent(PUBLIC_TOKEN) : '/api/dashboards';
+
+  // Requests a public page may make, mapped to the public API; anything else
+  // (saving, deleting, sharing, ...) is not available there.
+  function publicPath(method, path) {
+    const p = String(path).split('?')[0];
+    if (method === 'GET' && /^\/\d+$/.test(p)) return '';
+    if (method === 'GET' && /^\/views\/[^/]+\/columns$/.test(p)) return '/columns';
+    if (method === 'POST' && (p === '/data' || p === '/chart-data')) return p;
+    if (method === 'POST' && /^\/\d+\/kpi$/.test(p)) return '/kpi';
+    if (method === 'POST' && /^\/\d+\/export\/excel$/.test(p)) return '/export/excel';
+    return null;
+  }
+
+  function apiUrl(method, path) {
+    if (!PUBLIC_TOKEN) return API + path;
+    const mapped = publicPath(method, path);
+    if (mapped === null) throw new Error(t('public_read_only_error'));
+    return API + mapped;
+  }
 
   const DEFAULT_COLORS = [
     'rgba(37, 99, 235, 0.7)',
@@ -476,7 +498,7 @@
       if (token) opts.headers['X-CSRF-Token'] = token;
     }
     if (body) opts.body = JSON.stringify(body);
-    const res = await fetch(API + path, opts);
+    const res = await fetch(apiUrl(method, path), opts);
     if (!res.ok) throw new Error(await res.text());
     return res.json();
   }
@@ -488,7 +510,7 @@
       if (token) opts.headers['X-CSRF-Token'] = token;
     }
     if (body) opts.body = JSON.stringify(body);
-    const res = await fetch(API + path, opts);
+    const res = await fetch(apiUrl(method, path), opts);
     if (!res.ok) throw new Error(await res.text());
     return { blob: await res.blob(), filename: extractFilename(res.headers.get('content-disposition')) };
   }
@@ -500,11 +522,49 @@
 
   function extractFilename(header) {
     if (!header) return 'download';
-    const m = header.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+    // RFC 5987 name (UTF-8, e.g. with diacritics) first, then the plain one.
+    const utf = header.match(/filename\*\s*=\s*UTF-8''([^;\n]+)/i);
+    if (utf) {
+      try { return decodeURIComponent(utf[1].trim()); } catch (e) { /* use the plain name */ }
+    }
+    const m = header.match(/filename\s*=\s*((['"]).*?\2|[^;\n]*)/);
     return m ? m[1].replace(/['"]/g, '') : 'download';
   }
 
+  // Read-only page of a public link: open the dashboard, nothing else.
+  async function initPublic() {
+    bindEvents();
+    try {
+      await openDashboard(0);
+    } catch (err) {
+      $('#empty-state').classList.remove('hidden');
+      $('#empty-state').innerHTML = `<p>${esc(t('public_link_invalid_text'))}</p>`;
+      $('#builder').classList.add('hidden');
+      return;
+    }
+    const dash = state.currentDashboard;
+    document.title = dash.name || document.title;
+    const nameInput = $('#dashboard-name');
+    nameInput.readOnly = true;
+    nameInput.tabIndex = -1;
+    const note = $('#public-note');
+    const expires = dash.public && dash.public.expires_at;
+    note.textContent = expires
+      ? t('public_view_note_expires', { date: formatDescriptionDate(expires.replace(' ', 'T') + 'Z') })
+      : t('public_view_note');
+    note.classList.remove('hidden');
+  }
+
   function init() {
+    if (PUBLIC_TOKEN) {
+      const start = () => initPublic();
+      if (window.I18n && window.I18n.isReady && !window.I18n.isReady()) {
+        const unsubscribe = window.I18n.onChange(() => { unsubscribe(); start(); });
+      } else {
+        start();
+      }
+      return;
+    }
     console.log('app.js init start');
     bindLanguageSwitcher();
     bindUserMenu();
@@ -1470,6 +1530,7 @@
     await refreshData();
     renderDashboardList();
     $('#workspace').scrollTop = 0;
+    window.dispatchEvent(new CustomEvent('analytics:dashboard-opened', { detail: { id: dash.id } }));
   }
 
   function migrateLegacyDrillDown() {
@@ -3412,7 +3473,7 @@
     renderCharts();
     // Saved on its own so that other unsaved edits are not stored along with it;
     // an unsaved dashboard keeps the choice until its first save.
-    if (dash.id) {
+    if (dash.id && !PUBLIC_TOKEN) {
       api('PUT', '/' + dash.id + '/expanded-chart', { expanded_chart: idx })
         .catch(err => console.error('Could not store the enlarged chart', err));
     }
@@ -3605,6 +3666,7 @@
   }
 
   async function loadViewLineage(viewName) {
+    if (PUBLIC_TOKEN) return { found: false };
     const list = await getJson('/api/views/saved');
     const match = (list || []).find(v => (v.NazevSys || v.Nazev) === viewName);
     if (!match) return { found: false };
@@ -4952,6 +5014,8 @@
     api,
     esc,
     currentDashboard: () => state.currentDashboard,
+    // List entry of a dashboard (it says whether it is a copy shared by someone).
+    dashboardSummary: (id) => (state.dashboards || []).find(d => d.id === id) || null,
     openDashboard: (id) => openDashboard(id),
     reloadDashboards: () => loadDashboards(),
   };

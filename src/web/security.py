@@ -39,7 +39,9 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
-        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        # A route may ask for a stricter policy (public dashboard links: no-referrer).
+        if "referrer-policy" not in response.headers:
+            response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         response.headers["Permissions-Policy"] = (
             "camera=(), microphone=(), geolocation=()"
         )

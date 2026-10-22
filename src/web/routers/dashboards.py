@@ -5,7 +5,9 @@ from __future__ import annotations
 import datetime as dt
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query
+import os
+
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
 
 from src.web.auth import require_user
 from src.web.db import DatabaseError
@@ -19,6 +21,7 @@ from src.web.models.dashboard import (
 )
 from src.web.models.user import User, UserRole
 from src.web.services import dashboard_sharing as sharing
+from src.web.services import public_links
 from src.web.services.export import export_pivot_to_excel, export_table_to_excel
 from src.web.services.query import (
     dashboard_to_query_payload,
@@ -156,6 +159,61 @@ def revoke_dashboard_share(share_id: int, user: Annotated[User, Depends(require_
         return sharing.revoke(user, share_id)
     except sharing.DashboardSharingError as exc:
         raise _sharing_http_error(exc) from exc
+
+
+# ---------------------------------------------------------------------------
+# Public links (see services/public_links.py)
+# ---------------------------------------------------------------------------
+def _public_base(request: Request) -> str:
+    """Address of the web application used in public links."""
+    return (os.getenv("APP_BASE_URL") or str(request.base_url)).rstrip("/")
+
+
+def _public_http_error(exc: public_links.PublicLinkError) -> HTTPException:
+    if isinstance(exc, public_links.PublicLinkNotFound):
+        return HTTPException(status_code=404, detail=str(exc))
+    return HTTPException(status_code=400, detail=str(exc))
+
+
+@router.get("/{dashboard_id}/public-links")
+def list_public_links(dashboard_id: int, request: Request, user: Annotated[User, Depends(require_user)]):
+    try:
+        return public_links.list_links(user, dashboard_id, _public_base(request))
+    except public_links.PublicLinkError as exc:
+        raise _public_http_error(exc) from exc
+
+
+@router.post("/{dashboard_id}/public-links")
+def create_public_link(
+    dashboard_id: int,
+    request: Request,
+    user: Annotated[User, Depends(require_user)],
+    payload: Annotated[dict[str, Any], Body()],
+):
+    """New read-only link to the dashboard (label and expiry are optional)."""
+    try:
+        return public_links.create_link(
+            user, dashboard_id, str(payload.get("label") or ""), payload.get("expires"), _public_base(request)
+        )
+    except public_links.PublicLinkError as exc:
+        raise _public_http_error(exc) from exc
+
+
+@router.post("/public-links/{link_id}/revoke")
+def revoke_public_link(link_id: int, request: Request, user: Annotated[User, Depends(require_user)]):
+    try:
+        return public_links.revoke_link(user, link_id, _public_base(request))
+    except public_links.PublicLinkError as exc:
+        raise _public_http_error(exc) from exc
+
+
+@router.delete("/public-links/{link_id}")
+def delete_public_link(link_id: int, user: Annotated[User, Depends(require_user)]):
+    try:
+        public_links.delete_link(user, link_id)
+    except public_links.PublicLinkError as exc:
+        raise _public_http_error(exc) from exc
+    return {"deleted": True}
 
 
 @router.post("/{dashboard_id}/shares/check")
@@ -339,6 +397,7 @@ def delete_dashboard(
         raise HTTPException(status_code=404, detail="Dashboard not found")
     storage.delete_dashboard(dashboard_id)
     sharing.on_dashboard_deleted(existing)
+    public_links.on_dashboard_deleted(dashboard_id)
     return {"ok": True}
 
 
@@ -366,7 +425,11 @@ def get_dashboard_kpi(
     dashboard = storage.get_dashboard_for_user(dashboard_id, user)
     if not dashboard:
         raise HTTPException(status_code=404, detail="Dashboard not found")
-    connector = _dashboard_connector(dashboard) or _user_connector(user)
+    return kpi_values(dashboard, _dashboard_connector(dashboard) or _user_connector(user))
+
+
+def kpi_values(dashboard: Dashboard, connector: Any) -> list[dict[str, Any]]:
+    """KPI card values of a stored dashboard (also used by public links)."""
     payload = dashboard_to_query_payload(dashboard)
     payload.visible_columns = list(
         dict.fromkeys(
@@ -396,7 +459,11 @@ def export_dashboard_excel(
     dashboard = storage.get_dashboard_for_user(dashboard_id, user)
     if not dashboard:
         raise HTTPException(status_code=404, detail="Dashboard not found")
-    connector = _dashboard_connector(dashboard) or _user_connector(user)
+    return excel_response(dashboard, _dashboard_connector(dashboard) or _user_connector(user))
+
+
+def excel_response(dashboard: Dashboard, connector: Any):
+    """Excel export of a stored dashboard (also used by public links)."""
     pivot_data = run_data_query(dashboard_to_query_payload(dashboard), connector=connector)
     filename = f"{dashboard.name or 'dashboard'}_data.xlsx".replace(" ", "_")
 
@@ -433,5 +500,19 @@ def export_dashboard_excel(
     return Response(
         content=body,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f"attachment; filename={filename}"},
+        headers={"Content-Disposition": _attachment_header(filename)},
     )
+
+
+def _attachment_header(filename: str) -> str:
+    """Content-Disposition for any file name (HTTP headers are Latin-1 only).
+
+    An ASCII fallback plus the RFC 5987 UTF-8 name, so names with diacritics
+    (e.g. "Přehled") download correctly instead of failing.
+    """
+    import unicodedata
+    from urllib.parse import quote
+
+    ascii_name = unicodedata.normalize("NFKD", filename).encode("ascii", "ignore").decode("ascii")
+    ascii_name = "".join(ch if ch.isalnum() or ch in "._-" else "_" for ch in ascii_name) or "dashboard.xlsx"
+    return f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(filename, safe='')}"

@@ -346,3 +346,55 @@ body { margin: 0; }
   .shell-backdrop,
   .sidebar-collapse svg { transition: none !important; }
 }
+
+/* ------------------------------------------------------------------ */
+/* Public read-only link (/public/dashboard/<token>): KPI, charts, table */
+/* ------------------------------------------------------------------ */
+body.public-mode .layout { display: block; height: 100vh; height: 100dvh; }
+body.public-mode .workspace { height: 100%; }
+body.public-mode .sidebar,
+body.public-mode .mobile-topbar,
+body.public-mode .shell-backdrop,
+body.public-mode .right-panel,
+body.public-mode #right-panel-open,
+body.public-mode #save-dashboard,
+body.public-mode #delete-dashboard,
+body.public-mode #copy-dashboard,
+body.public-mode #share-dashboard,
+body.public-mode .source-label,
+body.public-mode .remove-kpi,
+body.public-mode .remove-chart,
+body.public-mode .cip-edit,
+body.public-mode .cip-write,
+body.public-mode .cip-lineage,
+body.public-mode .cip-foot,
+body.public-mode #view-modeling-page,
+body.public-mode #connectors-page { display: none !important; }
+body.public-mode .source-panel { justify-content: flex-end; }
+body.public-mode .builder-header { align-items: baseline; }
+body.public-mode #dashboard-name {
+  flex: 1 1 auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 1.35rem;
+  font-weight: 700;
+  pointer-events: none;
+}
+.public-note {
+  flex: 0 0 auto;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  background: var(--primary-light);
+  color: #4338ca;
+  font-size: 0.78rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.public-note.hidden { display: none; }
+body.theme-bg-black .public-note { background: rgba(129, 140, 248, 0.2); color: #c7d2fe; }
+@media (max-width: 639.98px) {
+  body.public-mode #dashboard-name { flex-basis: 100%; font-size: 1.15rem; }
+  .public-note { white-space: normal; }
+}

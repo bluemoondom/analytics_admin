@@ -97,6 +97,20 @@ Whole dashboards (table settings, filters, KPI cards, charts with their descript
 - When the author saves a new version, the recipient is offered the update; accepting it replaces the copy with the author's version, declining keeps the current copy
 - The author sees the status of every share and can revoke it at any time; a revoked copy is hidden from the recipient (sharing it again brings the same copy back after it is accepted). A recipient who deletes the copy ends the share; if the author deletes the original, copies stay without further updates
 - Every dashboard reads its data through its own connector (the one it was created or accepted with), not the currently active one
+- A received copy cannot be shared further (neither by e-mail nor by a public link); only the author of a dashboard shares it
+
+### Public Dashboard Links
+
+The author of a dashboard can publish it read-only for people without an account (**Share → Public link**).
+
+- Each link has a long random token in its address (`/public/dashboard/<token>`, 256 bits) and an optional label; a dashboard can have several links (e.g. one for the management, another for a partner)
+- Validity: no expiry by default (the link works until it is revoked or the dashboard is deleted), or 1 / 7 / 30 / 90 days, or until a chosen date (the whole day in the author's time zone)
+- The author sees every link with its status (active, expired, revoked), number of views and last view, copies the address again at any time, and can **revoke** or **delete** a link; deleting the dashboard ends all its links
+- Visitors see only the KPI cards, charts and table: no menu, no settings panel, nothing can be saved. They can sort the table, copy cell values, enlarge charts, hide series in the legend, read chart descriptions and export to Excel and PDF
+- The server always uses the stored dashboard definition (view, filters, charts, KPI cards); a visitor can change only the sorting, and only the columns the dashboard uses are exposed. The data lineage section and the editor of a description are not shown
+- Tokens are stored as a SHA-256 hash for lookup and encrypted with `STORAGE_ENCRYPTION_KEY` so the author can copy the link again; the public page is sent with `no-store`, `no-referrer` and `noindex`
+- Only the author of a dashboard can create links: a copy received through dashboard sharing cannot be published. A link also stops working when the author's account is deactivated
+- Links use `APP_BASE_URL` (or the address the author is using when it is not set)
 
 ---
 
@@ -165,7 +179,7 @@ pip install BI-analytics-admin
 python -m src.web.server
 ```
 
-Database changes are applied automatically on startup. The metadata database gets the `view_shares` table and a `share_uuid` column on `connectors` (existing connectors receive a code automatically), the `saved_views` and `saved_view_imports` tables (saved view definitions), the `dashboard_shares` table, the `expanded_chart` column on `dashboards` and the `description`, `show_caption`, `description_updated_by` and `description_updated_at` columns on `dashboard_charts`, so the database user needs permission to create and alter tables.
+Database changes are applied automatically on startup. The metadata database gets the `view_shares` table and a `share_uuid` column on `connectors` (existing connectors receive a code automatically), the `saved_views` and `saved_view_imports` tables (saved view definitions), the `dashboard_shares` and `dashboard_public_links` tables, the `expanded_chart` column on `dashboards` and the `description`, `show_caption`, `description_updated_by` and `description_updated_at` columns on `dashboard_charts`, so the database user needs permission to create and alter tables.
 
 Chart.js and jsPDF are served from `src/web/static/vendor` (see the README there); no external CDN is needed.
 

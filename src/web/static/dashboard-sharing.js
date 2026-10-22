@@ -69,9 +69,167 @@
     $('#dshare-view-option').classList.add('hidden');
     hideResult($('#dshare-result'));
     $('#dshare-list').innerHTML = '';
+    hideResult($('#dpublic-result'));
+    $('#dpublic-label').value = '';
+    $('#dpublic-expiry').value = 'never';
+    $('#dpublic-date').value = '';
+    $('.dpublic-date').classList.add('hidden');
+    $('#dpublic-list').innerHTML = '';
+    showPane('users');
     $('#dshare-modal').classList.remove('hidden');
     $('#dshare-email').focus();
     renderShareList();
+    renderPublicLinks();
+  }
+
+  function showPane(name) {
+    document.querySelectorAll('#dshare-modal .dshare-tab').forEach(tab => {
+      const active = tab.dataset.pane === name;
+      tab.classList.toggle('active', active);
+      tab.setAttribute('aria-selected', String(active));
+    });
+    document.querySelectorAll('#dshare-modal .dshare-pane').forEach(pane => {
+      pane.classList.toggle('hidden', pane.dataset.pane !== name);
+    });
+    // "Share" belongs to the e-mail tab only.
+    $('#dshare-send').classList.toggle('hidden', name !== 'users');
+    if (name === 'public') $('#dpublic-label').focus();
+    else $('#dshare-email').focus();
+  }
+
+  // ----- public links -----
+  function formatDate(text) {
+    if (!text) return '';
+    const d = new Date(String(text).replace(' ', 'T') + 'Z');
+    if (Number.isNaN(d.getTime())) return text;
+    const lang = (window.I18n && window.I18n.getLang && window.I18n.getLang()) || undefined;
+    try {
+      return d.toLocaleString(lang, { day: 'numeric', month: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    } catch (e) {
+      return d.toLocaleString();
+    }
+  }
+
+  async function renderPublicLinks() {
+    const dash = currentDashboard();
+    const list = $('#dpublic-list');
+    if (!dash || !dash.id) return;
+    try {
+      const links = await api('GET', '/' + dash.id + '/public-links');
+      if (!links.length) {
+        list.innerHTML = `<li class="empty-hint">${esc(t('public_link_none'))}</li>`;
+        return;
+      }
+      list.innerHTML = links.map(l => {
+        const title = l.label || t('public_link_untitled', { id: l.id });
+        const expiry = l.expires_at
+          ? t(l.status === 'expired' ? 'public_link_expired_at' : 'public_link_valid_until', { date: formatDate(l.expires_at) })
+          : t('public_link_no_expiry');
+        const usage = t('public_link_views', { n: l.access_count })
+          + (l.last_access_at ? ' · ' + t('public_link_last_view', { date: formatDate(l.last_access_at) }) : '');
+        return `<li class="share-row dpublic-row status-${esc(l.status)}">
+          <div class="share-row-main">
+            <strong>${esc(title)}</strong>
+            <span class="meta">${esc(expiry)} · ${esc(usage)}</span>
+            ${l.url ? `<span class="dpublic-url"><input type="text" readonly value="${esc(l.url)}" aria-label="${esc(t('public_link_url'))}"><button type="button" class="btn small dpublic-copy">${esc(t('public_link_copy'))}</button></span>` : ''}
+          </div>
+          <span class="share-status dpublic-status-${esc(l.status)}">${esc(t('public_link_status_' + l.status))}</span>
+          <span class="dpublic-actions">
+            ${l.status === 'active' ? `<button type="button" class="btn small dpublic-revoke" data-id="${esc(l.id)}">${esc(t('public_link_revoke'))}</button>` : ''}
+            <button type="button" class="btn small danger dpublic-delete" data-id="${esc(l.id)}">${esc(t('public_link_delete'))}</button>
+          </span>
+        </li>`;
+      }).join('');
+      list.querySelectorAll('.dpublic-copy').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const input = btn.parentElement.querySelector('input');
+          const ok = await copyText(input.value, input);
+          btn.textContent = t(ok ? 'public_link_copied' : 'cell_copy_failed_toast');
+          setTimeout(() => { btn.textContent = t('public_link_copy'); }, 1600);
+        });
+      });
+      list.querySelectorAll('.dpublic-url input').forEach(input => {
+        input.addEventListener('focus', () => input.select());
+      });
+      list.querySelectorAll('.dpublic-revoke').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          if (!confirm(t('public_link_revoke_confirm'))) return;
+          try {
+            await api('POST', '/public-links/' + btn.dataset.id + '/revoke');
+            await renderPublicLinks();
+          } catch (err) {
+            showResult($('#dpublic-result'), esc(errorText(err)), 'error');
+          }
+        });
+      });
+      list.querySelectorAll('.dpublic-delete').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          if (!confirm(t('public_link_delete_confirm'))) return;
+          try {
+            await api('DELETE', '/public-links/' + btn.dataset.id);
+            await renderPublicLinks();
+          } catch (err) {
+            showResult($('#dpublic-result'), esc(errorText(err)), 'error');
+          }
+        });
+      });
+    } catch (err) {
+      list.innerHTML = `<li class="empty-hint">${esc(errorText(err))}</li>`;
+    }
+  }
+
+  async function copyText(text, input) {
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+        return true;
+      }
+    } catch (e) {
+      // fall back below
+    }
+    try {
+      input.focus();
+      input.select();
+      return document.execCommand('copy');
+    } catch (e) {
+      return false;
+    }
+  }
+
+  async function createPublicLink() {
+    const dash = currentDashboard();
+    if (!dash || !dash.id) return;
+    const choice = $('#dpublic-expiry').value;
+    let expires = choice;
+    if (choice === 'date') {
+      const day = $('#dpublic-date').value;
+      // Valid through the whole chosen day in the author's time zone.
+      expires = day ? new Date(day + 'T23:59:59').toISOString() : '';
+    }
+    if (choice === 'date' && !expires) {
+      showResult($('#dpublic-result'), esc(t('public_link_pick_date')), 'error');
+      return;
+    }
+    const btn = $('#dpublic-create');
+    btn.disabled = true;
+    try {
+      const link = await api('POST', '/' + dash.id + '/public-links', {
+        label: $('#dpublic-label').value.trim(),
+        expires,
+      });
+      showResult($('#dpublic-result'), esc(t('public_link_created')), 'success');
+      $('#dpublic-label').value = '';
+      await renderPublicLinks();
+      const input = document.querySelector('#dpublic-list .dpublic-url input[value="' + CSS.escape(link.url) + '"]');
+      if (input) {
+        input.focus();
+        input.select();
+      }
+    } catch (err) {
+      showResult($('#dpublic-result'), esc(errorText(err)), 'error');
+    } finally {
+      btn.disabled = false;
+    }
   }
 
   function closeShareModal() {
@@ -369,6 +527,25 @@
       e.preventDefault();
       if (state.checkedEmail) sendShare(); else checkRecipient();
     });
+    document.querySelectorAll('#dshare-modal .dshare-tab').forEach(tab => {
+      tab.addEventListener('click', () => showPane(tab.dataset.pane));
+    });
+    bind('dpublic-create', 'click', createPublicLink);
+    bind('dpublic-expiry', 'change', () => {
+      const custom = $('#dpublic-expiry').value === 'date';
+      $('.dpublic-date').classList.toggle('hidden', !custom);
+      if (custom) {
+        const tomorrow = new Date(Date.now() + 86400000);
+        $('#dpublic-date').min = tomorrow.toISOString().slice(0, 10);
+        $('#dpublic-date').focus();
+      }
+    });
+    bind('dpublic-label', 'keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        createPublicLink();
+      }
+    });
     bind('dshare-preview-close', 'click', closePreview);
     bind('dshare-preview-accept', 'click', acceptPreview);
     bind('dshare-preview-decline', 'click', declinePreview);
@@ -382,12 +559,18 @@
       if (!$('#dshare-preview-modal').classList.contains('hidden')) closePreview();
     });
 
-    // "Share" is offered for saved dashboards, exactly like "Delete".
+    // "Share" is offered for saved dashboards, exactly like "Delete", but not
+    // for a copy someone shared with the user (only its author shares it).
     const del = $('#delete-dashboard');
     const share = $('#share-dashboard');
     if (del && share) {
-      const sync = () => share.classList.toggle('hidden', del.classList.contains('hidden'));
+      const sync = () => {
+        const dash = currentDashboard();
+        const summary = dash && dash.id ? app().dashboardSummary(dash.id) : null;
+        share.classList.toggle('hidden', del.classList.contains('hidden') || !!(summary && summary.shared_by));
+      };
       new MutationObserver(sync).observe(del, { attributes: true, attributeFilter: ['class'] });
+      window.addEventListener('analytics:dashboard-opened', sync);
       sync();
     }
 

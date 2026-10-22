@@ -162,7 +162,7 @@
     <div class="user-section" id="user-section">
       <button class="user-trigger" id="user-trigger" type="button" aria-expanded="false">
         <img src="/static/icons/user.svg" alt="" class="user-icon" />
-        <span class="user-email">{{ user.email }}</span>
+        <span class="user-email">{{ user.email if user else '' }}</span>
       </button>
       <div class="user-dropdown" id="user-dropdown">
         <button type="button" id="logout-button" class="logout-item">
@@ -184,6 +184,7 @@
     <div id="builder" class="builder hidden">
       <header class="builder-header">
         <input id="dashboard-name" class="title-input" data-i18n-placeholder="dashboard_name_placeholder" placeholder="Název dashboardu" />
+        <span id="public-note" class="public-note hidden"></span>
         <div class="actions">
           <button id="save-dashboard" class="btn primary"><img src="/static/icons/save.svg" alt="" class="btn-icon" /> <span data-i18n="save_dashboard_button">Uložit</span></button>
           <button id="delete-dashboard" class="btn danger hidden"><img src="/static/icons/delete.svg" alt="" class="btn-icon" /> <span data-i18n="delete_dashboard_button">Smazat</span></button>
@@ -904,6 +905,11 @@
   <div class="modal-content share-modal-content">
     <h4 id="dshare-title" data-i18n="dashboard_share_modal_title">Sdílet dashboard</h4>
     <p id="dshare-name" class="share-subtitle"></p>
+    <div class="dshare-tabs" role="tablist">
+      <button type="button" class="dshare-tab active" role="tab" aria-selected="true" data-pane="users" data-i18n="dashboard_share_tab_users">Uživatelům</button>
+      <button type="button" class="dshare-tab" role="tab" aria-selected="false" data-pane="public" data-i18n="dashboard_share_tab_public">Veřejný odkaz</button>
+    </div>
+    <div class="dshare-pane" data-pane="users">
     <label for="dshare-email" class="share-field-label" data-i18n="dashboard_share_email_label">E-mail příjemce</label>
     <div class="share-code-entry">
       <input id="dshare-email" type="email" autocomplete="off" spellcheck="false" placeholder="name@company.com" />
@@ -917,6 +923,32 @@
     </label>
     <h5 class="share-section-heading" data-i18n="share_existing_heading">Sdíleno s</h5>
     <ul id="dshare-list" class="share-list"></ul>
+    </div>
+    <div class="dshare-pane hidden" data-pane="public">
+      <p class="hint dpublic-hint" data-i18n="public_link_hint">Kdokoli s odkazem uvidí bez přihlášení KPI karty, grafy a tabulku tohoto dashboardu. Nemůže nic měnit; může řadit tabulku, kopírovat hodnoty a exportovat do Excelu a PDF.</p>
+      <div class="dpublic-form">
+        <label class="dpublic-label"><span data-i18n="public_link_label">Popisek</span>
+          <input id="dpublic-label" type="text" maxlength="120" data-i18n-placeholder="public_link_label_placeholder" placeholder="např. Vedení" />
+        </label>
+        <label class="dpublic-expiry"><span data-i18n="public_link_expiry">Platnost</span>
+          <select id="dpublic-expiry">
+            <option value="never" data-i18n="public_link_expiry_never">Bez expirace</option>
+            <option value="1" data-i18n="public_link_expiry_1">1 den</option>
+            <option value="7" data-i18n="public_link_expiry_7">7 dní</option>
+            <option value="30" data-i18n="public_link_expiry_30">30 dní</option>
+            <option value="90" data-i18n="public_link_expiry_90">90 dní</option>
+            <option value="date" data-i18n="public_link_expiry_date">Do data…</option>
+          </select>
+        </label>
+        <label class="dpublic-date hidden"><span data-i18n="public_link_expiry_until">Platí do</span>
+          <input id="dpublic-date" type="date" />
+        </label>
+        <button id="dpublic-create" type="button" class="btn primary" data-i18n="public_link_create">Vytvořit odkaz</button>
+      </div>
+      <p id="dpublic-result" class="share-result hidden"></p>
+      <h5 class="share-section-heading" data-i18n="public_link_list_heading">Odkazy</h5>
+      <ul id="dpublic-list" class="share-list dpublic-list"></ul>
+    </div>
     <div class="modal-actions">
       <button id="dshare-close" type="button" class="btn" data-i18n="share_close_button">Zavřít</button>
       <button id="dshare-send" type="button" class="btn primary" disabled data-i18n="share_send_button">Sdílet</button>
@@ -956,8 +988,12 @@
 
 {% endblock %}
 {% block scripts %}
+{% if public_token %}
+<script src="/static/app.js?v={{ asset_version }}"></script>
+{% else %}
 <script src="/static/view-modeling.js?v={{ asset_version }}"></script>
 <script src="/static/connectors.js?v={{ asset_version }}"></script>
 <script src="/static/app.js?v={{ asset_version }}"></script>
 <script src="/static/dashboard-sharing.js?v={{ asset_version }}"></script>
+{% endif %}
 {% endblock %}

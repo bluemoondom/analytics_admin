@@ -3423,3 +3423,50 @@ body.theme-bg-black .dshare-conn.status-will_share .meta { color: #c7d2fe; }
 body.theme-bg-black .dshare-conn.status-missing .meta,
 body.theme-bg-black .dshare-conn.status-missing_columns .meta,
 body.theme-bg-black .dshare-conn.status-conflict .meta { color: #fca5a5; }
+
+/* Share dialog: tabs and public links */
+.dshare-tabs { display: flex; gap: 0.25rem; margin: -0.2rem 0 0.9rem; border-bottom: 1px solid var(--border); }
+.dshare-tab {
+  padding: 0.45rem 0.8rem;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.dshare-tab:hover { color: var(--text); }
+.dshare-tab.active { color: var(--primary-hover); border-bottom-color: var(--primary-hover); }
+.dshare-pane.hidden { display: none; }
+.dpublic-hint { margin-top: 0; }
+.dpublic-form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0.5rem; margin-bottom: 0.6rem; }
+.dpublic-form label { flex: 1 1 140px; }
+.dpublic-form .dpublic-label { flex: 2 1 200px; }
+.dpublic-form .hidden { display: none; }
+.dpublic-form input, .dpublic-form select { margin: 0; }
+.dpublic-list { max-height: 320px; }
+.dpublic-row { align-items: flex-start; }
+.dpublic-url { display: flex; gap: 0.35rem; margin-top: 0.35rem; }
+.dpublic-url input {
+  flex: 1;
+  min-width: 0;
+  margin: 0 !important;
+  padding: 0.3rem 0.45rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.75rem;
+  background: #f9fafb;
+}
+.dpublic-actions { display: flex; flex-direction: column; gap: 0.3rem; flex-shrink: 0; }
+.share-status.dpublic-status-active { background: #dcfce7; color: #166534; }
+.share-status.dpublic-status-expired { background: #fef3c7; color: #92400e; }
+.share-status.dpublic-status-revoked { background: #f3f4f6; color: #6b7280; }
+.dpublic-row.status-expired strong, .dpublic-row.status-revoked strong { color: var(--muted); }
+body.theme-bg-black .dshare-tab.active { color: #a5b4fc; border-bottom-color: #a5b4fc; }
+body.theme-bg-black .dpublic-url input { background: #1f2937; color: #f3f4f6; border-color: #4b5563; }
+@media (max-width: 639.98px) {
+  .dpublic-row { flex-wrap: wrap; }
+  .dpublic-actions { flex-direction: row; }
+}

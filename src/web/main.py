@@ -16,7 +16,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from src.web.auth import get_current_user_optional
 from src.web.config import get_settings
 from src.web.models.user import User
-from src.web.routers import auth, connectors, dashboards, public_api, views
+from src.web.routers import auth, connectors, dashboards, public_api, public_dashboards, views
 from src.web.security import CSRFMiddleware, SecurityHeadersMiddleware
 from src.web.services.migrations import run_migrations
 
@@ -79,6 +79,7 @@ def create_app() -> FastAPI:
     app.include_router(connectors.router)
 
     app.include_router(public_api.router)
+    app.include_router(public_dashboards.router)
 
     @app.get("/", response_class=HTMLResponse)
     def index(request: Request, user: Annotated[User | None, Depends(get_current_user_optional)]):
@@ -92,6 +93,33 @@ def create_app() -> FastAPI:
         )
         # Always revalidate the page, so it refers to the current asset versions.
         response.headers["Cache-Control"] = "no-cache"
+        return response
+
+    @app.get("/public/dashboard/{token}", response_class=HTMLResponse)
+    def public_dashboard_page(request: Request, token: str):
+        """Read-only dashboard behind a public link (no sign-in).
+
+        Three path segments, so it never collides with the public view API
+        (``/{tenant}/{view_name}``) served by the same application.
+        """
+        from src.web.services import public_links
+
+        found = public_links.resolve(token)
+        if found is None:
+            response = templates.TemplateResponse(
+                request, "public_invalid.html", {"title": settings.APP_TITLE}, status_code=404
+            )
+        else:
+            _link, dashboard, _connector = found
+            response = templates.TemplateResponse(
+                request,
+                "index.html",
+                {"title": dashboard.name or settings.APP_TITLE, "user": None, "public_token": token},
+            )
+        # The token is the key to the data: keep it out of referrers, caches and search engines.
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["Referrer-Policy"] = "no-referrer"
+        response.headers["X-Robots-Tag"] = "noindex, nofollow"
         return response
 
     @app.get("/login", response_class=HTMLResponse)

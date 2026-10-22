@@ -17,6 +17,8 @@ database; the recipient accepts or declines it after signing in.
 * **Connector** - on acceptance the recipient picks one of their connectors;
   only connectors where the view is available (or will be, via the shared
   view) and has all columns the dashboard uses can be picked.
+* **No re-sharing** - a received copy cannot be shared further (by e-mail or
+  by a public link); only the author of a dashboard shares it.
 * **Revoking** - the author can revoke an invitation or an accepted share at
   any time. A revoked copy is hidden from the recipient (not deleted, so
   sharing it again brings it back). A recipient who deletes the copy ends the
@@ -336,6 +338,12 @@ def _own_dashboard(user: User, dashboard_id: int) -> Dashboard:
     dashboard = _dashboard_storage().get_dashboard_for_user(int(dashboard_id), user)
     if dashboard is None:
         raise DashboardShareNotFound("Dashboard nebyl nalezen.")
+    # A received copy is not shared further (neither by e-mail nor by a public link).
+    received = DashboardShareStorage().for_target_dashboard(dashboard.id or 0)
+    if received and received["target_user_id"] == user.id:
+        raise DashboardSharingError(
+            "Tento dashboard vám někdo nasdílel. Dál ho sdílet může jen jeho autor."
+        )
     return dashboard
 
 

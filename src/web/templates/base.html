@@ -3,14 +3,16 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="icon" type="image/x-icon" href="static/favicon.ico">
+  <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
   <title>{{ title }}</title>
+  {% if public_token %}<meta name="robots" content="noindex, nofollow">
+  <meta name="referrer" content="no-referrer">{% endif %}
   <link rel="stylesheet" href="/static/app.css?v={{ asset_version }}">
   <link rel="stylesheet" href="/static/user-menu.css?v={{ asset_version }}">
   <link rel="stylesheet" href="/static/sidebar.css?v={{ asset_version }}">
   <link rel="stylesheet" href="/static/responsive.css?v={{ asset_version }}">
 </head>
-<body>
+<body{% if public_token %} class="public-mode" data-public-token="{{ public_token }}"{% endif %}>
   {% block body %}{% endblock %}
 
   <!-- Loaded first so the remembered sidebar width applies before the larger libraries. -->
